@@ -1,0 +1,17 @@
+[package]
+name = "toolbox"
+version = "0.1.0"
+authors = ["Ethan Hall <ethankhall@pm.me>"]
+edition = "2018"
+
+[lib]
+name = "shared_libs"
+path = "src/shared_libs/lib.rs"
+
+[dependencies]
+log = "0.4.1"
+fern = { version = "0.5", features = ["colored"] }
+clap = "2.29.2"
+colored = "1.6"
+chrono = "0.4"
+chrono-tz = "0.5"

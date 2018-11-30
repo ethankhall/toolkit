@@ -18,7 +18,11 @@ fn main() {
         )
         (@subcommand time =>
             (about: "Takes a time, and gives a bunch of details about it")
-            (@arg INPUT: +takes_value ... +required "Input to be parsed, will be merged into a single string")
+            (@group options =>
+                (@attributes +required)
+                (@arg example: --example "Output the current time in all understood formats")
+                (@arg INPUT: +takes_value ... "Input to be parsed, will be merged into a single string")
+            )
         )).get_matches();
 
     

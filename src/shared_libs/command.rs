@@ -21,7 +21,13 @@ pub mod time {
         "%H:%M",
         "%H:%M:%S",
         "%I:%M:%S %p",
-        "%I:%M:%S %P"
+        "%I:%M:%S %P",
+    ];
+
+    static TIMEZONE_FORMATS : &'static [&str] = &[
+        "%z",
+        "%:z",
+        "%#z"
     ];
 
     static DATETIME_FORMATS: &'static [&str] = &[
@@ -45,8 +51,55 @@ pub mod time {
     ];
 
     pub fn do_time_command(args: &ArgMatches) {
-        let input_array: Vec<&str> = args.values_of("INPUT").unwrap().collect();
+        if args.is_present("example") {
+            print_examples()
+        } else {
+            let input_array: Vec<&str> = args.values_of("INPUT").unwrap().collect();
+            do_parse(input_array);
+        }
+    }
 
+    fn print_examples() {
+        let now = Utc::now().with_timezone(&Tz::UTC);
+
+        println!("Here are all my known formats for `now`.");
+        
+        for format in vec!["%s%3f", "%s"] { // We understand this format, but don't parse it this way.
+            println!("- `{}`", now.format(&format).to_string())
+        }
+
+        for format in build_all_time_parse_options() {
+            if !format.contains("%#z") { //Input with %#z is undefined and will panic
+                println!("- `{}`", now.format(&format).to_string())
+            }
+        }
+    }
+
+    fn build_all_time_parse_options() -> Vec<String> {
+        let mut options = Vec::new();
+        for datetime_format in DATETIME_FORMATS {
+            options.push(s!(datetime_format));
+        }
+
+        for date_format in DATE_FORMATS {
+            options.push(s!(date_format));
+
+            for time_format in TIME_FORMATS {
+                let datetime_format = format!("{} {}", date_format, time_format);
+                options.push(datetime_format);
+
+                for timezone_format in TIMEZONE_FORMATS {
+                    let zoned_datetime_format = format!("{} {} {}", date_format, time_format, timezone_format);
+
+                    options.push(zoned_datetime_format);
+                }
+            }
+        }
+
+        return options;
+    }
+
+    fn do_parse(input_array: Vec<&str>) {
         let mut local_timezone = Local::now().offset().fix();
         let mut input_string = input_array.join(" ");
         for test in input_array.clone() {
@@ -108,44 +161,27 @@ pub mod time {
             return Some(timestamp.with_timezone(&FixedOffset::east(0)));
         }
 
-        // Try full date-time formats
-        for datetime_format in DATETIME_FORMATS {
-            match DateTime::parse_from_str(input, datetime_format) {
-                Ok(value) => return Some(value),
-                Err(err) => {
-                    debug!("Processing {} against {} and got {}", input, datetime_format, err);
-                }
-            }
-
-            match NaiveDateTime::parse_from_str(input, datetime_format) {
-                Ok(value) => return Some(DateTime::from_utc(value, local_timezone)),
-                Err(err) => {
-                    debug!("Processing {} against {} and got {}", input, datetime_format, err);
-                }
+        for format in build_all_time_parse_options() {
+            if let Some(value) = try_parse(input, &format, local_timezone) {
+                return Some(value);
             }
         }
 
-        for date_format in DATE_FORMATS {
-            if let Ok(value) = NaiveDate::parse_from_str(input, date_format) {
-                return Some(DateTime::from_utc(value.and_hms(0, 0, 0), local_timezone));
+        return None;
+    }
+
+    fn try_parse(input: &str, format: &str, local_timezone: FixedOffset) -> Option<DateTime<FixedOffset>> {
+        match DateTime::parse_from_str(input, format) {
+            Ok(value) => return Some(value),
+            Err(err) => {
+                debug!("Processing {} against {} and got {}", input, format, err);
             }
+        }
 
-            for time_format in TIME_FORMATS {
-                let datetime_format = format!("{} {}", date_format, time_format);
-
-                match DateTime::parse_from_str(input, &datetime_format) {
-                    Ok(value) => return Some(value),
-                    Err(err) => {
-                        debug!("Processing {} against {} and got {}", input, datetime_format, err);
-                    }
-                }
-
-                match NaiveDateTime::parse_from_str(input, &datetime_format) {
-                    Ok(value) => return Some(DateTime::from_utc(value, local_timezone)),
-                    Err(err) => {
-                        debug!("Processing {} against {} and got {}", input, datetime_format, err);
-                    }
-                }
+        match NaiveDateTime::parse_from_str(input, format) {
+            Ok(value) => return Some(DateTime::from_utc(value, local_timezone)),
+            Err(err) => {
+                debug!("Processing {} against {} and got {}", input, format, err);
             }
         }
 

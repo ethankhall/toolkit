@@ -1,0 +1,62 @@
+resources:
+- repo: self
+phases:
+  - phase: Phase_1
+    displayName: Windows Build
+    queue:
+      name: Hosted VS2017
+    steps:
+      - task: PowerShell@2
+        inputs:
+          targetType: 'filePath'
+          filePath: 'ci\windows-build.ps1'
+      - task: PublishBuildArtifacts@1
+        displayName: "Publish Artifact: Release Build"
+        inputs:
+          PathtoPublish: ./target/release/toolkit.exe
+          ArtifactName: toolkit-windows
+          ArtifactType: Container
+
+  - phase: Linux_Build
+    queue: Hosted Linux Preview
+    steps:
+      - task: Docker@0
+        inputs:
+          detached: false
+          containerregistrytype: 'Container Registry'
+          dockerFile: '.docker/musl-linux.Dockerfile'
+          imageName: 'inc-musl'
+
+      - task: Docker@0
+        displayName: Build Application
+        inputs:
+          detached: false
+          containerregistrytype: 'Container Registry'
+          action: 'Run an image'
+          imageName: 'inc-musl'
+          volumes: $(Build.SourcesDirectory):/build
+          workDir: '/build'
+          containerCommand: '/bin/musl-build.sh'
+
+      - task: PublishBuildArtifacts@1
+        displayName: "Publish Artifact: Release Build"
+        inputs:
+          PathtoPublish: ./target/x86_64-unknown-linux-musl/release/toolkit
+          ArtifactType: Container
+          ArtifactName: toolkit-linux
+
+  - phase: Phase_2
+    displayName: Mac Build
+    queue:
+      name: Hosted macOS
+    steps:
+      - script: |
+          curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
+          $HOME/.cargo/bin/cargo build --release
+      - task: PublishBuildArtifacts@1
+        displayName: "Publish Artifact: Release Build"
+        inputs:
+          PathtoPublish: ./target/release/toolkit
+          ArtifactName: toolkit-mac
+          ArtifactType: Container
+

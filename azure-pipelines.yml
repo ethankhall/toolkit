@@ -16,10 +16,12 @@ jobs:
         inputs:
           targetType: 'filePath'
           filePath: 'ci\windows-build.ps1'
-      - task: PublishPipelineArtifact@0
+      - task: PublishBuildArtifacts@1
+        displayName: "Publish Artifact: Release Build"
         inputs:
-          artifactName: 'toolkit-windows.exe'
-          targetPath: 'target/release/toolkit.exe'
+          PathtoPublish: .\target\release\toolkit.exe
+          ArtifactName: toolkit-windows.exe
+          ArtifactType: Container
 
   - job: Linux_Build
     pool:
@@ -31,10 +33,12 @@ jobs:
           sudo apt-get install -y cmake
 
           $HOME/.cargo/bin/cargo +nightly-x86_64-unknown-linux-musl build --release
-      - task: PublishPipelineArtifact@0
+      - task: PublishBuildArtifacts@1
+        displayName: "Publish Artifact: Release Build"
         inputs:
-          artifactName: 'toolkit-linux'
-          targetPath: 'target/release/toolkit'
+          PathtoPublish: ./target/release/toolkit
+          ArtifactName: toolkit-linux
+          ArtifactType: Container
 
   - job: Mac_Build
     pool:
@@ -45,10 +49,12 @@ jobs:
           $HOME/.cargo/bin/cargo build --release
           pwd
           ls target/release
-      - task: PublishPipelineArtifact@0
+      - task: PublishBuildArtifacts@1
+        displayName: "Publish Artifact: Release Build"
         inputs:
-          artifactName: 'toolkit-mac'
-          targetPath: 'target/release/toolkit'
+          PathtoPublish: ./target/release/toolkit
+          ArtifactName: toolkit-mac
+          ArtifactType: Container
   
   - job: Release
     pool:
@@ -59,11 +65,16 @@ jobs:
       - Linux_Build
       - Windows_Build
     steps:
-      - task: DownloadPipelineArtifact@0
+      - task: DownloadBuildArtifacts@0
         inputs:
-          targetPath: $(System.DefaultWorkingDirectory)
+          downloadPath: $(System.ArtifactsDirectory)/artifacts
       - script: |
           curl --location https://github.com/ethankhall/release-manager/releases/download/v0.1.9/release-manager-linux -o ~/release-manager
           chmod +x ~/release-manager
+          echo $SYSTEM_ARTIFACTSDIRECTORY
+          ls $SYSTEM_ARTIFACTSDIRECTORY
           ~/release-manager github release-and-bump
-          ~/release-manager github toolkit-windows.exe=toolkit-windows.exe toolkit-mac=toolkit-mac toolkit-linux=toolkit-linux
+          ~/release-manager github \
+            toolkit-windows.exe=$SYSTEM_ARTIFACTSDIRECTORY/toolkit-windows/toolkit.exe \
+            toolkit-mac=$SYSTEM_ARTIFACTSDIRECTORY/toolkit-mac/toolkit \
+            toolkit-linux=$SYSTEM_ARTIFACTSDIRECTORY/toolkit-linux/toolkit

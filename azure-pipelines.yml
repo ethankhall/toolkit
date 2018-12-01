@@ -26,10 +26,11 @@ jobs:
       vmImage: 'ubuntu-16.04'
     steps:
       - script: |
-          curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly-x86_64-unknown-linux-musl -y
-          apt-get install -y cmake
+          curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
+          rustup target add x86_64-unknown-linux-musl
+          sudo apt-get install -y cmake
 
-          $HOME/.cargo/bin/cargo build --release
+          $HOME/.cargo/bin/cargo build +nightly-x86_64-unknown-linux-musl --release
       - task: PublishPipelineArtifact@0
         inputs:
           artifactName: 'toolkit-linux'

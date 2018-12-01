@@ -7,6 +7,7 @@ trigger:
       - README.md
       - docs
       - version.properties
+      - Cargo.toml
 jobs:
   - job: Windows_Build
     pool:
@@ -75,7 +76,7 @@ jobs:
           echo $SYSTEM_ARTIFACTSDIRECTORY
           ls $SYSTEM_ARTIFACTSDIRECTORY
           ~/release-manager github release-and-bump
-          ~/release-manager github \
-            toolkit-windows.exe=$SYSTEM_ARTIFACTSDIRECTORY/toolkit-windows/toolkit.exe \
-            toolkit-mac=$SYSTEM_ARTIFACTSDIRECTORY/toolkit-mac/toolkit \
-            toolkit-linux=$SYSTEM_ARTIFACTSDIRECTORY/toolkit-linux/toolkit
+          ~/release-manager github artifacts \
+            toolkit-windows.exe=$SYSTEM_ARTIFACTSDIRECTORY/artifacts/toolkit-windows/toolkit.exe \
+            toolkit-mac=$SYSTEM_ARTIFACTSDIRECTORY/artifacts/toolkit-mac/toolkit \
+            toolkit-linux=$SYSTEM_ARTIFACTSDIRECTORY/artifacts/toolkit-linux/toolkit

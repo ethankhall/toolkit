@@ -24,7 +24,7 @@ phases:
         inputs:
           detached: false
           containerregistrytype: 'Container Registry'
-          dockerFile: '.docker/musl-linux.Dockerfile'
+          dockerFile: 'ci/musl-linux.Dockerfile'
           imageName: 'inc-musl'
 
       - task: Docker@0

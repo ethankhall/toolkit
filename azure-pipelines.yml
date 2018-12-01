@@ -67,6 +67,7 @@ jobs:
     steps:
       - task: DownloadBuildArtifacts@0
         inputs:
+          downloadType: specific
           downloadPath: $(System.ArtifactsDirectory)/artifacts
       - script: |
           curl --location https://github.com/ethankhall/release-manager/releases/download/v0.1.9/release-manager-linux -o ~/release-manager

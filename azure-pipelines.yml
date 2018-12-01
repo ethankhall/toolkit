@@ -8,7 +8,7 @@ trigger:
       - docs
       - version.properties
 jobs:
-  - job: Windows Build
+  - job: Windows_Build
     pool:
       vmImage: 'vs2017-win2016'
     steps:
@@ -23,7 +23,7 @@ jobs:
           ArtifactName: toolkit-windows
           ArtifactType: Container
 
-  - job: Linux Build
+  - job: Linux_Build
     pool:
       vmImage: 'ubuntu-16.04'
     steps:
@@ -52,7 +52,7 @@ jobs:
           ArtifactType: Container
           ArtifactName: toolkit-linux
 
-  - job: Mac Build
+  - job: Mac_Build
     pool:
       vmImage: 'macOS-10.13'
     steps:

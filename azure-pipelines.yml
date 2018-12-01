@@ -16,41 +16,24 @@ jobs:
         inputs:
           targetType: 'filePath'
           filePath: 'ci\windows-build.ps1'
-      - task: PublishBuildArtifacts@1
-        displayName: "Publish Artifact: Release Build"
+      - task: PublishPipelineArtifact@0
         inputs:
-          PathtoPublish: ./target/release/toolkit.exe
-          ArtifactName: toolkit-windows
-          ArtifactType: Container
+          artifactName: 'toolkit-windows.exe'
+          targetPath: 'target/release/toolkit.exe'
 
   - job: Linux_Build
     pool:
       vmImage: 'ubuntu-16.04'
     steps:
-      - task: Docker@0
-        inputs:
-          detached: false
-          containerregistrytype: 'Container Registry'
-          dockerFile: 'ci/musl-linux.Dockerfile'
-          imageName: 'inc-musl'
+      - script: |
+          curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly-x86_64-unknown-linux-musl -y
+          apt-get install -y cmake
 
-      - task: Docker@0
-        displayName: Build Application
+          $HOME/.cargo/bin/cargo build --release
+      - task: PublishPipelineArtifact@0
         inputs:
-          detached: false
-          containerregistrytype: 'Container Registry'
-          action: 'Run an image'
-          imageName: 'inc-musl'
-          volumes: $(Build.SourcesDirectory):/build
-          workDir: '/build'
-          containerCommand: '/bin/musl-build.sh'
-
-      - task: PublishBuildArtifacts@1
-        displayName: "Publish Artifact: Release Build"
-        inputs:
-          PathtoPublish: ./target/x86_64-unknown-linux-musl/release/toolkit
-          ArtifactType: Container
-          ArtifactName: toolkit-linux
+          artifactName: 'toolkit-linux'
+          targetPath: 'target/release/toolkit'
 
   - job: Mac_Build
     pool:
@@ -59,10 +42,25 @@ jobs:
       - script: |
           curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
           $HOME/.cargo/bin/cargo build --release
-      - task: PublishBuildArtifacts@1
-        displayName: "Publish Artifact: Release Build"
+      - task: PublishPipelineArtifact@0
         inputs:
-          PathtoPublish: ./target/release/toolkit
-          ArtifactName: toolkit-mac
-          ArtifactType: Container
-
+          artifactName: 'toolkit-mac'
+          targetPath: 'target/release/toolkit'
+  
+  - job: Release
+    pool:
+      vmImage: "ubuntu-16.04"
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+    dependsOn:
+      - Mac_Build
+      - Linux_Build
+      - Windows_Build
+    steps:
+      - task: DownloadPipelineArtifact@0
+        inputs:
+          targetPath: $(System.DefaultWorkingDirectory)
+      - script: |
+          curl --location https://github.com/ethankhall/release-manager/releases/download/v0.1.9/release-manager-linux -o ~/release-manager
+          chmod +x ~/release-manager
+          ~/release-manager github release-and-bump
+          ~/release-manager github toolkit-windows.exe=toolkit-windows.exe toolkit-mac=toolkit-mac toolkit-linux=toolkit-linux

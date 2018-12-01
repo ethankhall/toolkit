@@ -32,11 +32,11 @@ jobs:
           $HOME/.cargo/bin/rustup target add x86_64-unknown-linux-musl
           sudo apt-get install -y cmake
 
-          $HOME/.cargo/bin/cargo +nightly-x86_64-unknown-linux-musl build --release
+          $HOME/.cargo/bin/cargo build --target=x86_64-unknown-linux-musl --release
       - task: PublishBuildArtifacts@1
         displayName: "Publish Artifact: Release Build"
         inputs:
-          PathtoPublish: ./target/release/toolkit
+          PathtoPublish: ./target/x86_64-unknown-linux-musl/release/toolkit
           ArtifactName: toolkit-linux
           ArtifactType: Container
 

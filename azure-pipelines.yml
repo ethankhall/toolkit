@@ -3,8 +3,8 @@ resources:
 phases:
   - phase: Phase_1
     displayName: Windows Build
-    queue:
-      name: Hosted VS2017
+    pool:
+      vmImage: 'vs2017-win2016'
     steps:
       - task: PowerShell@2
         inputs:
@@ -48,8 +48,8 @@ phases:
 
   - phase: Phase_2
     displayName: Mac Build
-    queue:
-      name: Hosted macOS
+    pool:
+      vmImage: 'macOS-10.13'
     steps:
       - script: |
           curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y

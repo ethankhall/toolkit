@@ -73,8 +73,8 @@ jobs:
       - script: |
           curl --location https://github.com/ethankhall/release-manager/releases/download/v0.1.9/release-manager-linux -o ~/release-manager
           chmod +x ~/release-manager
-          echo $SYSTEM_ARTIFACTSDIRECTORY
-          ls $SYSTEM_ARTIFACTSDIRECTORY
+          sudo apt-get install -y tree
+          tree $SYSTEM_ARTIFACTSDIRECTORY
           ~/release-manager github release-and-bump
           ~/release-manager github artifacts \
             toolkit-windows.exe=$SYSTEM_ARTIFACTSDIRECTORY/artifacts/toolkit-windows/toolkit.exe \

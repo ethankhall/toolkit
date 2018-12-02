@@ -21,7 +21,7 @@ jobs:
         displayName: "Publish Artifact: Release Build"
         inputs:
           PathtoPublish: .\target\release\toolkit.exe
-          ArtifactName: toolkit-windows.exe
+          ArtifactName: toolkit-windows
           ArtifactType: Container
 
   - job: Linux_Build

@@ -1,40 +1,13 @@
-pub mod time {
+pub mod time_command {
     
-    use std::slice::SliceConcatExt;
     use std::process;
-    use std::str::FromStr;
 
     use clap::ArgMatches;
 
     use chrono::prelude::*;
     use chrono_tz::{Tz, America};
 
-    static DATE_FORMATS: &'static [&str] = &[
-        "%-m/%-d/%y",
-        "%Y-%m-%d",
-        "%e-%b-%Y",
-        "%-m-%-d-%Y",
-        "%-m-%-d-%y"
-    ];
-
-    static TIME_FORMATS: &'static [&str] = &[
-        "%H:%M",
-        "%H:%M:%S",
-        "%I:%M:%S %p",
-        "%I:%M:%S %P",
-    ];
-
-    static TIMEZONE_FORMATS : &'static [&str] = &[
-        "%z",
-        "%:z",
-        "%#z"
-    ];
-
-    static DATETIME_FORMATS: &'static [&str] = &[
-        "%c",
-        "%+",
-        "%a %b %d %H:%M:%S %Y"
-    ];
+    use super::super::time::{parse_time_from_array, build_all_time_parse_options};
 
     static EXPORT_FORMAT: &'static [(&str, &str, Option<Tz>)] = & [
         ("Standard Format in UTC", "%c", None),
@@ -55,7 +28,13 @@ pub mod time {
             print_examples()
         } else {
             let input_array: Vec<&str> = args.values_of("INPUT").unwrap().collect();
-            do_parse(input_array);
+            match parse_time_from_array(input_array.clone()) {
+                Ok(date) => render_output(date),
+                Err(input) => {
+                    error!("Unable to understand `{}`, please check our know formats with --example", input);
+                    process::exit(1);
+                }
+            }
         }
     }
 
@@ -75,64 +54,6 @@ pub mod time {
         }
     }
 
-    fn build_all_time_parse_options() -> Vec<String> {
-        let mut options = Vec::new();
-        for datetime_format in DATETIME_FORMATS {
-            options.push(s!(datetime_format));
-        }
-
-        for date_format in DATE_FORMATS {
-            options.push(s!(date_format));
-
-            for time_format in TIME_FORMATS {
-                let datetime_format = format!("{} {}", date_format, time_format);
-                options.push(datetime_format);
-
-                for timezone_format in TIMEZONE_FORMATS {
-                    let zoned_datetime_format = format!("{} {} {}", date_format, time_format, timezone_format);
-
-                    options.push(zoned_datetime_format);
-                }
-            }
-        }
-
-        return options;
-    }
-
-    fn do_parse(input_array: Vec<&str>) {
-        let mut local_timezone = Local::now().offset().fix();
-        let mut input_string = input_array.join(" ");
-        for test in input_array.clone() {
-
-            let zone = match test {
-                "PST" => Some(FixedOffset::west(8 * 3600)),
-                "PDT" => Some(FixedOffset::west(7 * 3600)),
-                _ => {
-                    match Tz::from_str(test) {
-                        Ok(data) => Some(Utc::now().with_timezone(&data).offset().fix()),
-                        Err(_) => None
-                    }
-                }
-            };
-
-            if let Some(tz) = zone {
-                local_timezone = tz;
-                input_string = input_string.replace(&format!(" {}", test), "");
-                break;
-            }
-        }
-
-        debug!("Input String: {}", input_string);
-
-        match parse_input(&input_string, local_timezone) {
-            Some(date) => render_output(date),
-            None => {
-                error!("Unable to understand `{}`, please check our know formats with --example", input_string);
-                process::exit(1);
-            }
-        }
-    }
-
     fn render_output(input: DateTime<FixedOffset>) {
         println!("Understood the date was {}", input);
         println!();
@@ -144,47 +65,5 @@ pub mod time {
 
             println!("{0: >27} || {1:}", text, this_format.to_string());
         }
-    }
-
-    fn parse_input(input: &str, local_timezone: FixedOffset) -> Option<DateTime<FixedOffset>> {
-        if "now" == input {
-            return Some(Utc::now().with_timezone(&local_timezone));
-        }
-
-        if let Ok(result) = input.parse::<i64>() {
-            let timestamp = if 15_000_000_000 < result {
-                Utc.timestamp(result / 1000, 0)
-            } else {
-                Utc.timestamp(result, 0)
-            };
-
-            return Some(timestamp.with_timezone(&FixedOffset::east(0)));
-        }
-
-        for format in build_all_time_parse_options() {
-            if let Some(value) = try_parse(input, &format, local_timezone) {
-                return Some(value);
-            }
-        }
-
-        return None;
-    }
-
-    fn try_parse(input: &str, format: &str, local_timezone: FixedOffset) -> Option<DateTime<FixedOffset>> {
-        match DateTime::parse_from_str(input, format) {
-            Ok(value) => return Some(value),
-            Err(err) => {
-                debug!("Processing {} against {} and got {}", input, format, err);
-            }
-        }
-
-        match NaiveDateTime::parse_from_str(input, format) {
-            Ok(value) => return Some(DateTime::from_utc(value, local_timezone)),
-            Err(err) => {
-                debug!("Processing {} against {} and got {}", input, format, err);
-            }
-        }
-
-        return None;
     }
 }

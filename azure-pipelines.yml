@@ -47,6 +47,7 @@ jobs:
     steps:
       - script: |
           curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
+          $HOME/.cargo/bin/cargo test
           $HOME/.cargo/bin/cargo build --release
           pwd
           ls target/release

@@ -4,7 +4,7 @@ extern crate shared_libs;
 extern crate chrono;
 
 use shared_libs::logging::configure_logging;
-use shared_libs::command::time::do_time_command;
+use shared_libs::command::time_command::do_time_command;
 
 fn main() {
     let matches = clap_app!(MyApp =>

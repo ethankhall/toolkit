@@ -16,3 +16,4 @@ macro_rules! s {
 
 pub mod logging;
 pub mod command;
+pub mod time;

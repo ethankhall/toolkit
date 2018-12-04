@@ -30,7 +30,7 @@ pub fn do_har_command(args: &ArgMatches) {
 
     let filtered_json = filter_har(json_value, filtered_domains, filtered_content);
 
-    let response_string = serde_json::to_string(&filtered_json).unwrap();
+    let response_string = serde_json::to_string_pretty(&filtered_json).unwrap();
     println!("{}", response_string);
 }
 
@@ -88,7 +88,7 @@ struct LogEntry {
     version: String,
     creator: NameVersionEntry,
     browser: NameVersionEntry,
-    pages: PagesEntry,
+    pages: Vec<PagesEntry>,
     entries: Vec<RequestWrapper>
 }
 
@@ -114,7 +114,8 @@ struct ResponseEntry {
     headers: Vec<NameValueEntry>,
     cookies: serde_json::Value,
     content: serde_json::Value,
-    redirect_URL: serde_json::Value,
+    #[serde(rename = "redirectURL")]
+    redirect_url: serde_json::Value,
     headers_size: serde_json::Value,
     body_size: serde_json::Value
 }

@@ -22,8 +22,16 @@ fn main() {
                 (@attributes +required)
                 (@arg example: --example "Output the current time in all understood formats")
                 (@arg INPUT: +takes_value ... "Input to be parsed, will be merged into a single string")
+            ))
+        (@subcommand har =>
+            (about: "Har...dy up those the hatches!")
+            (long_about: "Take a Har file, apply some filtering, then output a new Har file")
+            (@arg filter_domain: --("filter-domain") +takes_value +multiple "Include requests for specificed domain")
+            (@arg filter_context_type: --("filter-content-type") +takes_value +multiple "Include request that respond with specific types")
+            (@arg output: -o --output +takes_value "Output to a file instead of stdout")
+            (@arg INPUT: +takes_value "Input to be parsed.")
             )
-        )).get_matches();
+        ).get_matches();
 
     
     configure_logging(

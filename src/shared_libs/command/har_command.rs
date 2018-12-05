@@ -38,7 +38,6 @@ pub fn do_har_command(args: &ArgMatches) {
 mod test {
 
     use std::path::PathBuf;
-    use std::fs::File;
     use super::*;
 
     #[test]
@@ -49,11 +48,7 @@ mod test {
         d.push("example.har");
 
         println!("Path: {:?}", d);
-
-        let mut file = File::open(d).unwrap();
-        let mut contents = String::new();
-        file.read_to_string(&mut contents).unwrap();
-        make_json(&contents).unwrap();
+        make_json(d.to_str().unwrap()).unwrap();
     }
 }
 

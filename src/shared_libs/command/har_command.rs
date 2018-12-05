@@ -14,7 +14,7 @@ pub fn do_har_command(args: &ArgMatches) {
     let input_path = args.value_of("INPUT").unwrap();
     let filtered_domains = args.values_of("filter_domain").map(|x| x.collect()).unwrap_or_else(|| vec![]);
     let filtered_content = args.values_of("filter_context_type").map(|x| x.collect()).unwrap_or_else(|| vec![]);
-    let _output = args.values_of("output");
+    let output = args.value_of("output");
 
     let json_value = match make_json(input_path) {
         Ok(json_value) => json_value,
@@ -31,7 +31,26 @@ pub fn do_har_command(args: &ArgMatches) {
     let filtered_json = filter_har(json_value, filtered_domains, filtered_content);
 
     let response_string = serde_json::to_string_pretty(&filtered_json).unwrap();
-    println!("{}", response_string);
+
+    if output.is_some() {
+        let mut file = match File::create(output.unwrap()) {
+            Ok(file) => file,
+            Err(err) => {
+                error!("Unable to create file {} because {}!", output.unwrap(), err);
+                process::exit(2);
+            }
+        };
+
+        match file.write_all(response_string.as_bytes()) {
+            Ok(_) => {},
+            Err(err) => {
+                error!("Unable to write to file ({})!", err);
+                process::exit(3);
+            }
+        };
+    } else {
+        println!("{}", response_string);
+    }
 }
 
 #[cfg(test)]

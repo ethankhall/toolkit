@@ -101,7 +101,7 @@ struct PagesEntry {
 struct LogEntry {
     version: String,
     creator: NameVersionEntry,
-    browser: NameVersionEntry,
+    browser: Option<NameVersionEntry>,
     pages: Vec<PagesEntry>,
     entries: Vec<RequestWrapper>
 }

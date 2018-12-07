@@ -1,5 +1,3 @@
-use std::process;
-
 use clap::ArgMatches;
 
 use chrono::prelude::*;
@@ -21,16 +19,17 @@ static EXPORT_FORMAT: &'static [(&str, &str, Option<Tz>)] = & [
     ("YYYYMMDD", "%Y%m%d", None),
 ];
 
-pub fn do_time_command(args: &ArgMatches) {
+pub fn do_time_command(args: &ArgMatches) -> Result<(), i32>{
     if args.is_present("example") {
-        print_examples()
+        print_examples();
+        return Ok(());
     } else {
         let input_array: Vec<&str> = args.values_of("INPUT").unwrap().collect();
-        match parse_time_from_array(input_array.clone()) {
-            Ok(date) => render_output(date),
+        return match parse_time_from_array(input_array.clone()) {
+            Ok(date) => Ok(render_output(date)),
             Err(input) => {
                 error!("Unable to understand `{}`, please check our know formats with --example", input);
-                process::exit(1);
+                return Err(1)
             }
         }
     }

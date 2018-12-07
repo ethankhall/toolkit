@@ -25,6 +25,12 @@ Understood the date was 2018-12-06 21:08:49.270120100 -08:00
 ## Har
 Har is a format you can get from Chrome/Firefox. These files are large. The `har` command allows you to filter the file by content-type, domain, and url. Once you've filtered the file, you can export in Har format for other tools, or into HTML or Markdown for easy easing.
 
+An example usecase would look like
+```
+$> toolkit har --filter-domain=google.com --filter-content-type=application/json --format=html google-api.har > google-api.html
+```
+
+### Help
 ```
 $> toolkit har --help
 toolkit-har

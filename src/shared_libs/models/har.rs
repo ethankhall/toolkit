@@ -52,7 +52,7 @@ pub struct RequestEntry {
 pub struct Content {
     pub mime_type: String,
     pub size: i64,
-    pub text: String
+    pub text: Option<String>
 }
 
 #[serde(rename_all = "camelCase")]

@@ -101,10 +101,14 @@ fn filter_har(json_value: HarFile, filtered_domains: Vec<&str>, filtered_content
     let filtered_content = RefCell::new(filtered_content);
     let filter_path = RefCell::new(filter_path);
 
+    debug!("Wanted domains: {:?}", filtered_domains);
+    
     let filtered_entries = json_value.log.entries.into_iter().filter(|wrapper| {
         let is_domain = is_required_domain(filtered_domains.borrow().to_vec(), wrapper.clone());
         let is_content = is_content_type_correct(filtered_content.borrow().to_vec(), wrapper.clone());
         let is_url = is_url_correct(filter_path.borrow(), wrapper.clone());
+
+        debug!("Domain: {}, Content: {}, Url: {}", is_domain,is_content, is_url);
 
         return is_domain && is_content && is_url;
     }).collect();
@@ -131,7 +135,7 @@ fn is_content_type_correct(filtered_content: Vec<&str>, wrapper: RequestWrapper)
     if !filtered_content.is_empty() {
         for required_type in filtered_content {
             for header in wrapper.response.headers.clone() {
-                if header.name == "Content-Type" {
+                if header.name.to_lowercase() == "content-type" {
                     if header.value.contains(required_type) {
                         return true;
                     }

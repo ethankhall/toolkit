@@ -427,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "toolbox"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono-tz 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",

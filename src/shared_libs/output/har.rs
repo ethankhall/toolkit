@@ -53,17 +53,26 @@ impl ToMarkdown for HarFile {
 
             lines.push("\n### Content".to_string());
             lines.push(format!("**Content Type:** {}\n", entry.response.content.mime_type.clone()));
-            let body = entry.response.content.text.replace("\\n", "\n");
-            let mime = entry.response.content.mime_type
-                .parse::<Mime>()
-                .unwrap_or(APPLICATION_OCTET_STREAM);
+            if let Some(text) = entry.response.content.text {
+                let body = text.replace("\\n", "\n");
+                let mime = entry.response.content.mime_type
+                    .parse::<Mime>()
+                    .unwrap_or(APPLICATION_OCTET_STREAM);
 
-            lines.push("**Body:**".to_string());
-            if mime == APPLICATION_JSON || mime == TEXT_JAVASCRIPT {
-                let body = serde_json::to_string_pretty(&body).unwrap();
-                lines.push(format!("```\n{}\n```\n", body))
-            } else {
-                lines.push(format!("```\n{}\n```\n", body))
+                lines.push("**Body:**".to_string());
+                if mime == APPLICATION_JSON || mime == TEXT_JAVASCRIPT {
+                    match serde_json::from_str::<serde_json::Value>(&body) {
+                        Ok(json) => {
+                            let body = serde_json::to_string_pretty(&json).unwrap();
+                            lines.push(format!("```\n{}\n```\n", body))
+                        },
+                        Err(_) => {
+                            lines.push(format!("```\n{}\n```\n", body))
+                        }
+                    }
+                } else {
+                    lines.push(format!("```\n{}\n```\n", body))
+                }
             }
         }
 

@@ -1,6 +1,6 @@
 [package]
 name = "toolbox"
-version = "0.1.9"
+version = "0.1.10"
 authors = ["Ethan Hall <ethankhall@pm.me>"]
 edition = "2018"
 

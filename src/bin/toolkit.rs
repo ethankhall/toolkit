@@ -28,8 +28,10 @@ fn main() {
             (about: "Har...dy up those the hatches!")
             (long_about: "Take a Har file, apply some filtering, then output a new Har file")
             (@arg filter_domain: --("filter-domain") +takes_value +multiple +require_equals "Include requests for specificed domain")
+            (@arg filter_path: --("filter-path") +takes_value +require_equals "A Regex to filter the path on")
             (@arg filter_context_type: --("filter-content-type") +takes_value +multiple +require_equals "Include request that respond with specific types")
             (@arg output: -o --output +takes_value +require_equals "Output to a file instead of stdout")
+            (@arg output_format: --format +takes_value default_value[har] possible_value[har html md markdown] "Instead of output")
             (@arg INPUT: +takes_value +required "Input to be parsed.")
             )
         ).get_matches();
@@ -41,9 +43,13 @@ fn main() {
         matches.is_present("quite"),
     );
 
-    match matches.subcommand() {
+    let result = match matches.subcommand() {
         ("time", Some(time_matches)) => do_time_command(time_matches),
         ("har", Some(time_matches)) => do_har_command(time_matches),
         _           => unreachable!()
+    };
+
+    if let Err(code) = result {
+        std::process::exit(code);
     }
 }

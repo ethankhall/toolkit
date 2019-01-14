@@ -1,8 +1,8 @@
 use chrono::Local;
 use std::io::{stderr, stdout};
 
-use fern::Dispatch;
 use fern::colors::{Color, ColoredLevelConfig};
+use fern::Dispatch;
 use log::Level;
 
 pub fn configure_logging(verbose: i32, warn: bool, quite: bool) {

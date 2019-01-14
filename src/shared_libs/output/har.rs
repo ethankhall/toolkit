@@ -1,9 +1,9 @@
-use mime::{Mime, APPLICATION_OCTET_STREAM, APPLICATION_JSON, TEXT_JAVASCRIPT};
-use serde_json;
 use comrak::{markdown_to_html, ComrakOptions};
+use mime::{Mime, APPLICATION_JSON, APPLICATION_OCTET_STREAM, TEXT_JAVASCRIPT};
+use serde_json;
 
-use crate::models::har::*;
 use super::*;
+use crate::models::har::*;
 
 impl ToJson for HarFile {
     fn to_json(self) -> String {
@@ -16,7 +16,7 @@ fn write_table(entries: Vec<NameValueEntry>) -> String {
     lines.push("".to_string());
     lines.push("|Name|Value|".to_string());
     lines.push("|:----|:---|".to_string());
-    
+
     for entry in entries {
         lines.push(format!("|`{}`|`{}`|", entry.name, entry.value));
     }
@@ -30,7 +30,10 @@ impl ToMarkdown for HarFile {
         let mut lines: Vec<String> = Vec::new();
 
         for entry in self.log.entries {
-            lines.push(format!("# {} - `{}`", entry.request.method, entry.request.url));
+            lines.push(format!(
+                "# {} - `{}`",
+                entry.request.method, entry.request.url
+            ));
             lines.push("## Request".to_string());
             lines.push("\n### Headers".to_string());
 
@@ -52,10 +55,16 @@ impl ToMarkdown for HarFile {
             lines.push(write_table(entry.response.cookies));
 
             lines.push("\n### Content".to_string());
-            lines.push(format!("**Content Type:** {}\n", entry.response.content.mime_type.clone()));
+            lines.push(format!(
+                "**Content Type:** {}\n",
+                entry.response.content.mime_type.clone()
+            ));
             if let Some(text) = entry.response.content.text {
                 let body = text.replace("\\n", "\n");
-                let mime = entry.response.content.mime_type
+                let mime = entry
+                    .response
+                    .content
+                    .mime_type
                     .parse::<Mime>()
                     .unwrap_or(APPLICATION_OCTET_STREAM);
 
@@ -65,10 +74,8 @@ impl ToMarkdown for HarFile {
                         Ok(json) => {
                             let body = serde_json::to_string_pretty(&json).unwrap();
                             lines.push(format!("```\n{}\n```\n", body))
-                        },
-                        Err(_) => {
-                            lines.push(format!("```\n{}\n```\n", body))
                         }
+                        Err(_) => lines.push(format!("```\n{}\n```\n", body)),
                     }
                 } else {
                     lines.push(format!("```\n{}\n```\n", body))
@@ -86,9 +93,10 @@ impl ToHtml for HarFile {
             ext_table: true,
             ..ComrakOptions::default()
         };
-        let rendered = markdown_to_html(&self.to_markdown(), &options);    
+        let rendered = markdown_to_html(&self.to_markdown(), &options);
 
-        return format!("<!DOCTYPE html>
+        return format!(
+            "<!DOCTYPE html>
     <html lang=\"en\">
     <head>
         <meta charset=\"utf-8\">
@@ -114,6 +122,8 @@ impl ToHtml for HarFile {
         <!-- Include all compiled plugins (below), or include individual files as needed -->
         <script src=\"js/bootstrap.min.js\"></script>
     </body>
-    </html>", rendered);
+    </html>",
+            rendered
+        );
     }
 }

@@ -15,12 +15,11 @@ pub trait ToHtml {
     fn to_html(self) -> String;
 }
 
-pub struct StdOutWriter {
-}
+pub struct StdOutWriter {}
 
 impl StdOutWriter {
     pub fn new() -> StdOutWriter {
-        return StdOutWriter { };
+        return StdOutWriter {};
     }
 
     pub fn save(self, value: String) -> Result<(), i32> {
@@ -30,7 +29,7 @@ impl StdOutWriter {
 }
 
 pub struct FileWriter {
-    pub path: String
+    pub path: String,
 }
 
 impl FileWriter {
@@ -44,13 +43,17 @@ impl FileWriter {
         let mut file = match File::create(self.path.clone()) {
             Ok(file) => file,
             Err(err) => {
-                error!("Unable to create file {} because {}!", self.path.clone(), err);
+                error!(
+                    "Unable to create file {} because {}!",
+                    self.path.clone(),
+                    err
+                );
                 return Err(2);
             }
         };
 
         match file.write_all(bytes) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(err) => {
                 error!("Unable to write to file ({})!", err);
                 return Err(3);
@@ -63,5 +66,5 @@ impl FileWriter {
 
 pub enum Writer {
     StdOut(StdOutWriter),
-    File(FileWriter)
+    File(FileWriter),
 }

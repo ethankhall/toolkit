@@ -15,20 +15,36 @@ struct Record {
     data: String,
 }
 
+#[test]
+fn leading_dot_will_be_ignored() {
+    let split: Vec<String> = parse_path(".abc.123");
+
+    assert_eq!(2, split.len());
+}
+
+fn parse_path(path: &str) -> Vec<String> {
+    let path = if path.starts_with(".") {
+        path.replacen(".", "", 1)
+    } else {
+        path.to_string()
+    };
+
+    let split: Vec<String> = path.split_terminator(".").map(|x| x.to_string()).collect();
+
+    return split;
+}
+
 pub fn do_json_filter_command(args: &ArgMatches) -> Result<(), i32>{
     let output_path = args.value_of("OUTPUT").unwrap();
     let output_path = PathBuf::from(output_path);
 
-    let id_path: Vec<&str> = args
-        .value_of("ID_PATH")
-        .unwrap()
-        .split_terminator(".")
-        .collect();
-    let version_path: Vec<&str> = args
-        .value_of("VESION_PATH")
-        .unwrap()
-        .split_terminator(".")
-        .collect();
+    let id_path: Vec<String> = parse_path(args
+        .value_of("id")
+        .unwrap());
+
+    let version_path: Vec<String> = parse_path(args
+        .value_of("seq")
+        .unwrap());
 
     let file = File::create(output_path).unwrap();
     let mut file = LineWriter::new(file);
@@ -105,12 +121,11 @@ pub fn do_json_filter_command(args: &ArgMatches) -> Result<(), i32>{
     return Ok(());
 }
 
-fn find_field<'a>(field: &Vec<&str>, json_input: &'a JsonValue) -> Option<&'a JsonValue> {
+fn find_field<'a>(field: &Vec<String>, json_input: &'a JsonValue) -> Option<&'a JsonValue> {
     let mut value = json_input;
 
     for part in field {
-        let part = part.to_string();
-        value = &value[&part];
+        value = &value[part];
         if value.is_null() {
             return None;
         }

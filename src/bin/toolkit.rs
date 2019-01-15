@@ -42,8 +42,8 @@ fn main() {
             (@subcommand filter =>
                (about: "Filter new-line delemited JSON stream to the newest message")
                 (long_about: "If a JSON blob has both an ID that's unique, and a timestamp/version field. Filter the stream for the latest ID/version field.")
-                (@arg ID_PATH: +required +takes_value "Path to 'join' field. Usually this will be an ID that may show up multiple times.")
-                (@arg VESION_PATH: +required +takes_value "Path to 'version' field. This value should be a number that will always be higher for later messages.")
+                (@arg id: -i --("id-path") +required +takes_value "A field like a ID or GUID that will be unique between different logical units, but the same for the same unit at different times.")
+                (@arg seq: -p --("sequence-path") +required +takes_value "Path to a value that will be greater than a previous value, based on order the the blob was created.")
                 (@arg OUTPUT: +required +takes_value "File to write output to")
                 )
             )

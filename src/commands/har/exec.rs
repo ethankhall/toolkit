@@ -10,20 +10,21 @@ use serde_json;
 use serde_json::Error as JsonError;
 use url::Url;
 
-use crate::models::har::*;
-use crate::output::*;
+use super::model::*;
+use super::output::*;
+use crate::commands::CliError;
 
-fn to_regex(input: &str) -> Result<Regex, i32> {
+fn to_regex(input: &str) -> Result<Regex, CliError> {
     return match Regex::new(input) {
         Ok(value) => Ok(value),
         Err(err) => {
             error!("Unable to convert {} into a Regex because {}.", input, err);
-            return Err(1);
+            return Err(CliError::new("Regex Error", 1));
         }
     };
 }
 
-pub fn do_har_command(args: &ArgMatches) -> Result<(), i32> {
+pub fn do_har_command(args: &ArgMatches) -> Result<(), CliError> {
     let input_path = args.value_of("INPUT").unwrap();
     let filtered_domains = args
         .values_of("filter_domain")
@@ -57,11 +58,11 @@ pub fn do_har_command(args: &ArgMatches) -> Result<(), i32> {
         Ok(json_value) => json_value,
         Err(ParseErrors::IO(err)) => {
             error!("Unable to parse {} because {}", input_path, err);
-            return Err(1);
+            return Err(CliError::new("Parse error", 1));
         }
         Err(ParseErrors::Json(err)) => {
             error!("Unable to parse {} because {}", input_path, err);
-            return Err(1);
+            return Err(CliError::new("Parse error", 1));
         }
     };
 
@@ -74,16 +75,18 @@ pub fn do_har_command(args: &ArgMatches) -> Result<(), i32> {
             "html" => har_file.to_html(),
             _ => {
                 error!("Unable to format to {}", format);
-                return Err(2);
+                return Err(CliError::new("Format error", 2));
             }
         },
         _ => unimplemented!(),
     };
 
-    return match writer {
+    let _ = match writer {
         Writer::File(writer) => writer.save(output_format),
         Writer::StdOut(writer) => writer.save(output_format),
     };
+
+    return Ok(());
 }
 
 #[cfg(test)]

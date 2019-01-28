@@ -1,14 +1,30 @@
+#![feature(slice_concat_ext)]
+
+extern crate chrono;
+extern crate chrono_tz;
+extern crate fern;
+#[macro_use]
+extern crate serde_derive;
+extern crate mime;
+extern crate regex;
+extern crate serde;
+extern crate serde_json;
+extern crate reqwest;
+extern crate url;
 #[macro_use]
 extern crate clap;
-extern crate chrono;
 extern crate json;
+#[macro_use]
 extern crate log;
-extern crate shared_libs;
+#[macro_use]
+extern crate kopy_common_lib;
 
-use shared_libs::command::har_command::do_har_command;
-use shared_libs::command::json_filter_command::do_json_filter_command;
-use shared_libs::command::time_command::do_time_command;
-use shared_libs::logging::configure_logging;
+mod commands;
+use commands::har::exec::do_har_command;
+use commands::json::do_json_filter_command;
+use commands::time::do_time_command;
+use commands::nsq::post::do_send_command;
+use kopy_common_lib::configure_logging;
 
 fn main() {
     let matches = clap_app!(MyApp =>
@@ -37,8 +53,22 @@ fn main() {
             (@arg output_format: --format +takes_value default_value[har] possible_value[har html md markdown] "Instead of output")
             (@arg INPUT: +takes_value +required "Input to be parsed.")
             )
+        (@subcommand nsq =>
+            (@setting SubcommandRequiredElseHelp)
+            (@subcommand send =>
+                (@setting ArgRequiredElseHelp)
+                (about: "Send a \\n deliminated file to an NSQ topic")
+                (@arg offset: --offset +takes_value "Where in the file to start posting.")
+                (@arg limit: --limit +takes_value "Limit the number of posts we send")
+                (@arg rate: --rate +takes_value "Limit the rate we send posts. Defaults to 200 m/s")
+                (@arg nsq_lookup_host: --("lookup-host") +required +takes_value "Host to the NSQ Lookup host")
+                (@arg nsq_lookup_port: --("lookup-port") +required +takes_value "HTTP port to NSQ Lookup service")
+                (@arg TOPIC: +required +takes_value "Which topic should be posted to")
+                (@arg INPUT: +required +takes_value "File to post line by line to the Bus")
+            ))
         (@subcommand json =>
             (@setting SubcommandRequiredElseHelp)
+            (about: "Nifty JSON command(s)")
             (@subcommand filter =>
                (about: "Filter new-line delemited JSON stream to the newest message")
                 (long_about: "If a JSON blob has both an ID that's unique, and a timestamp/version field. Filter the stream for the latest ID/version field.")
@@ -62,10 +92,14 @@ fn main() {
             ("filter", Some(filter_matches)) => do_json_filter_command(filter_matches),
             _ => unreachable!(),
         },
+        ("nsq", Some(nsq_matches)) => match nsq_matches.subcommand() {
+            ("send", Some(send_matches)) => do_send_command(send_matches),
+            _ => unreachable!(),
+        },
         _ => unreachable!(),
     };
 
-    if let Err(code) = result {
-        std::process::exit(code);
+    if let Err(err) = result {
+        std::process::exit(err.code);
     }
 }

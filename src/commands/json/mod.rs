@@ -8,6 +8,8 @@ use clap::ArgMatches;
 use indicatif::{ProgressBar, ProgressStyle};
 use json::JsonValue;
 
+use crate::commands::CliError;
+
 #[derive(Debug)]
 struct Record {
     id: String,
@@ -34,7 +36,7 @@ fn parse_path(path: &str) -> Vec<String> {
     return split;
 }
 
-pub fn do_json_filter_command(args: &ArgMatches) -> Result<(), i32>{
+pub fn do_json_filter_command(args: &ArgMatches) -> Result<(), CliError>{
     let output_path = args.value_of("OUTPUT").unwrap();
     let output_path = PathBuf::from(output_path);
 

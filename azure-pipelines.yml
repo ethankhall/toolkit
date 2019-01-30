@@ -32,9 +32,8 @@ jobs:
           curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
           $HOME/.cargo/bin/rustup target add x86_64-unknown-linux-musl
           sudo apt-get install -y cmake
-          
-          # https://github.com/briansmith/ring/pull/680/files
-          RING_DISABLE_PREGENERATED=true $HOME/.cargo/bin/cargo build --target=x86_64-unknown-linux-musl --release
+
+          $HOME/.cargo/bin/cargo build --target=x86_64-unknown-linux-musl --release
       - task: PublishBuildArtifacts@1
         displayName: "Publish Artifact: Release Build"
         inputs:

@@ -31,6 +31,8 @@ jobs:
       - script: |
           mkdir target
           chown 1000:1000 target
+          docker run --rm -t -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:nightly echo $UID
+          docker run --rm -t -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:nightly ls -al /home/rust/src /home/rust/src/target
           docker run --rm -t -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:nightly cargo build --release
       - task: PublishBuildArtifacts@1
         displayName: "Publish Artifact: Release Build"

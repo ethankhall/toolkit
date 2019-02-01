@@ -116,7 +116,7 @@ subcommands:
                     required: true
                     takes_value: true
                 - INPUT:
-                    help: File to post line by line to the Bus
+                    help: File to post line by line to NSQ
                     required: true
                     takes_value: true
     - json:

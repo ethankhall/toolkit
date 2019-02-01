@@ -53,27 +53,90 @@ FLAGS:
             Prints version information
 
     -w, --warn
-            Only error output will be displayed
+            Warning and Error level output will be displayed
 
 
 OPTIONS:
-        --filter-content-type=<filter_context_type>...
+        --filter-content-type <filter_context_type>...
             Include request that respond with specific types
 
-        --filter-domain=<filter_domain>...
+        --filter-domain <filter_domain>...
             Include requests for specificed domain
 
-        --filter-path=<filter_path>
+        --filter-path <filter_path>...
             A Regex to filter the path on
 
-    -o, --output=<output>
+    -o, --output <output>
             Output to a file instead of stdout
 
-        --format <output_format>
-            Instead of output [default: har]  [possible values: har, html, md, markdown]
+    -f, --format <output_format>
+            Change the output format [default: har]  [possible values: har, html, md, markdown]
 
 
 ARGS:
     <INPUT>
-            Input to be parsed.
+            Path to file to process
+```
+
+## NSQ
+[NSQ](https://nsq.io/) is a realtime distributed messaging platform. It's got cloud. 
+
+Sometimes you don't want cloud scale and just want to send some data to NSQ and *NOT* blow up everything. `nsq send` will send messages to NSQ and check how backed up the tubes have gotten. It will aim to keep 1000 messages waiting to be processed. There is also some rate limiting if you want to send things slower, but the queue backup is hard coded.
+
+### Help
+```
+Send a \n deliminated file to an NSQ topic
+
+USAGE:
+    toolkit nsq send [FLAGS] [OPTIONS] <TOPIC> <INPUT> --lookupd-host <nsq_lookup_host>
+
+FLAGS:
+    -d, --debug      Turn debugging information on
+    -h, --help       Prints help information
+    -q, --quite      Only error output will be displayed
+    -V, --version    Prints version information
+    -w, --warn       Warning and Error level output will be displayed
+
+OPTIONS:
+        --limit <limit>                     Limit the number of posts we send
+        --lookupd-host <nsq_lookup_host>    Host to NSQ Lookup
+        --lookupd-port <nsq_lookup_port>    Port to NSQ Lookup [default: 4161]
+        --offset <offset>                   Where in the file to start posting
+        --rate <rate>                       Limit the rate we send posts [default: 200]
+
+ARGS:
+    <TOPIC>    Which topic should be posted to
+    <INPUT>    File to post line by line to the Bus
+```
+
+## JSON
+Oh JSON my JSON.
+
+`json filter` helps keep things fresh! It's useful for when you have a bunch of newline delimited json, and want the freshest one. Sometimes there are multiple messages with for the same thing, but with new-er values.
+
+If you happen to have a list JSON blobs line by line and want to find the _most recent_ one there. This tool will do that filtering for you!
+
+### Help
+```
+If a JSON blob has both an ID that's unique, and a timestamp/version field. Filter the stream for the latest ID/version
+field.
+
+USAGE:
+    toolkit json filter [FLAGS] <OUTPUT> --id-path <id> --sequence-path <seq>
+
+FLAGS:
+    -d, --debug      Turn debugging information on
+    -h, --help       Prints help information
+    -q, --quite      Only error output will be displayed
+    -V, --version    Prints version information
+    -w, --warn       Warning and Error level output will be displayed
+
+OPTIONS:
+        --id-path <id>           A field like a ID or GUID that will be unique between different logical units, but the
+                                 same for the same unit at different times
+        --sequence-path <seq>    Path to a value that will be greater than a previous value, based on order the the blob
+                                 was created
+
+ARGS:
+    <OUTPUT>    File to write output to
 ```

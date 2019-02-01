@@ -29,11 +29,8 @@ jobs:
       vmImage: 'ubuntu-16.04'
     steps:
       - script: |
-          curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
-          $HOME/.cargo/bin/rustup target add x86_64-unknown-linux-musl
-          sudo apt-get install -y cmake
-
-          $HOME/.cargo/bin/cargo build --target=x86_64-unknown-linux-musl --release
+          chmod a+wr .
+          docker run --rm -t -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:nightly cargo build --release
       - task: PublishBuildArtifacts@1
         displayName: "Publish Artifact: Release Build"
         inputs:

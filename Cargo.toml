@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 log = "0.4.1"
 fern = { version = "0.5", features = ["colored"] }
-clap = "2.*"
+clap = { version = "2.32", features = ["yaml"] }
 colored = "1.6"
 chrono = "0.4"
 chrono-tz = "0.5"

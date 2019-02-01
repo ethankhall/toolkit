@@ -35,17 +35,34 @@ struct LookupProducer {
 #[derive(Serialize, Deserialize)]
 struct LookupResponse {
     status_code: i32,
-    status_text: String,
+    data: LookupData
+}
+
+#[derive(Serialize, Deserialize)]
+struct LookupData {
     producers: Vec<LookupProducer>
 }
 
 pub fn get_base_url_for_topic(nsq_lookup: String, topic: &str) -> Option<String> {
     let url = format!("http://{}/lookup?topic={}", nsq_lookup, topic);
     let url = Url::parse(&url).expect("URL to be valid");
-    let body = reqwest::get(url).unwrap().text().unwrap();
+    let body = match reqwest::get(url) {
+        Err(e) => { 
+            error!("Unable to talk to NSQ: {}", e.to_string());
+            return None;
+        },
+        Ok(mut resp) => {
+            if !resp.status().is_success() {
+                error!("NSQ returned with an error: {:#?}", resp.text());
+                return None;
+            } else {
+                resp.text().unwrap()
+            }
+        }
+    };
 
     let json_body: LookupResponse = serde_json::from_str(&body).expect("To be able to get LookupResponse from NSQ API");
-    for producer in json_body.producers {
+    for producer in json_body.data.producers {
         let base_url = format!("http://{}:{}", producer.broadcast_address, producer.http_port);
 
         let url = format!("{}/ping", base_url);

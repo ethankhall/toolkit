@@ -1,11 +1,6 @@
 use url::Url;
 
 #[derive(Serialize, Deserialize)]
-struct StatusDetails {
-    data: StatusTopicsDetails
-}
-
-#[derive(Serialize, Deserialize)]
 struct StatusTopicsDetails {
     topics: Vec<TopicDetails>
 }
@@ -13,6 +8,7 @@ struct StatusTopicsDetails {
 #[derive(Serialize, Deserialize)]
 struct TopicDetails {
     topic_name: String,
+    depth: i32,
     channels: Vec<TopicChannel>,
 }
 
@@ -82,29 +78,115 @@ pub fn get_queue_size(base_url: &str, topic: &str) -> Option<(i32, i32)> {
 
     if let Ok(mut response) = reqwest::get(topic_url) {
         if let Ok(body) = response.text() {
-            let json_body: Result<StatusDetails, _> = serde_json::from_str(&body);
+            let json_body: Result<StatusTopicsDetails, _> = serde_json::from_str(&body);
             if let Ok(root) = json_body {
-                let channels: Vec<TopicChannel> = root.data.topics.into_iter().flat_map(|x|{
-                    if x.topic_name != topic {
-                        return vec!();
-                    } else {
-                        return x.channels;
-                    }
-                }).collect();
-                let mut queued = 0;
-                let mut in_flight = 0;
-                for channel in channels {
-                    if channel.depth > queued {
-                        queued = channel.depth;
-                    }
-
-                    if channel.in_flight_count > in_flight {
-                        in_flight = channel.in_flight_count;
-                    }
-                }
-                return Some((queued, in_flight));
+                return extract_size_from_body(root, topic);
+            } else {
+                warn!("Unable to deserialize {} from the stats", body);
             }
         }
     }
     None
+}
+
+fn extract_size_from_body(body: StatusTopicsDetails, topic: &str) -> Option<(i32, i32)> {
+    let topic_details: Option<TopicDetails> = body.topics.into_iter().find(|x| x.topic_name == topic);
+
+    match topic_details {
+        None => None,
+        Some(topic) => {
+            let mut queued = topic.depth;
+            let mut in_flight = 0;
+            for channel in topic.channels {
+                if channel.depth > queued {
+                    queued = channel.depth;
+                }
+
+                if channel.in_flight_count > in_flight {
+                    in_flight = channel.in_flight_count;
+                }
+            }
+            Some((queued, in_flight))
+        }
+    }
+}
+
+#[test]
+fn test_extract_size() {
+    let body = "{
+    \"version\": \"1.1.0\",
+    \"health\": \"OK\",
+    \"start_time\": 1548185315,
+    \"topics\": [
+        {
+            \"topic_name\": \"foo\",
+            \"channels\": [
+                {
+                    \"channel_name\": \"tail180292#ephemeral\",
+                    \"depth\": 3,
+                    \"backend_depth\": 0,
+                    \"in_flight_count\": 1,
+                    \"deferred_count\": 0,
+                    \"message_count\": 1399,
+                    \"requeue_count\": 0,
+                    \"timeout_count\": 0,
+                    \"clients\": [
+                        {
+                            \"client_id\": \"ethan\",
+                            \"hostname\": \"ethan.local\",
+                            \"version\": \"V2\",
+                            \"remote_address\": \"1.2.3.4:33576\",
+                            \"state\": 3,
+                            \"ready_count\": 1,
+                            \"in_flight_count\": 1,
+                            \"message_count\": 1396,
+                            \"finish_count\": 1395,
+                            \"requeue_count\": 0,
+                            \"connect_ts\": 1549065745,
+                            \"sample_rate\": 0,
+                            \"deflate\": false,
+                            \"snappy\": false,
+                            \"user_agent\": \"nsq_tail/1.1.0 go-nsq/1.0.6\",
+                            \"tls\": false,
+                            \"tls_cipher_suite\": \"\",
+                            \"tls_version\": \"\",
+                            \"tls_negotiated_protocol\": \"\",
+                            \"tls_negotiated_protocol_is_mutual\": false
+                        }
+                    ],
+                    \"paused\": false,
+                    \"e2e_processing_latency\": {
+                        \"count\": 0,
+                        \"percentiles\": null
+                    }
+                }
+            ],
+            \"depth\": 0,
+            \"backend_depth\": 0,
+            \"message_count\": 29259,
+            \"paused\": false,
+            \"e2e_processing_latency\": {
+                \"count\": 0,
+                \"percentiles\": null
+            }
+        }
+    ],
+    \"memory\": {
+        \"heap_objects\": 21625,
+        \"heap_idle_bytes\": 11886592,
+        \"heap_in_use_bytes\": 3743744,
+        \"heap_released_bytes\": 10280960,
+        \"gc_pause_usec_100\": 5612,
+        \"gc_pause_usec_99\": 3742,
+        \"gc_pause_usec_95\": 878,
+        \"next_gc_bytes\": 4194304,
+        \"gc_total_runs\": 219
+    }
+}";
+
+    let body: StatusTopicsDetails = serde_json::from_str(body).unwrap();
+
+    let (queued, in_flight) = extract_size_from_body(body, "foo").unwrap();
+    assert_eq!(3, queued);
+    assert_eq!(1, in_flight);
 }

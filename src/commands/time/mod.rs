@@ -18,14 +18,14 @@ static DATE_FORMATS: &'static [&str] = &[
 
 static TIME_FORMATS: &'static [&str] = &["%H:%M", "%H:%M:%S", "%I:%M:%S %p", "%I:%M:%S %P"];
 static TIMEZONE_FORMATS: &'static [&str] = &["%z", "%:z", "%#z"];
-static DATETIME_FORMATS: &'static [&str] = &["%c", "%+", "%a %b %d %H:%M:%S %Y"];
+static DATETIME_FORMATS: &'static [&str] = &["%c", "%+", "%Y-%m-%dT%H:%M:%S%:z", "%a %b %d %H:%M:%S %Y"];
 
 static EXPORT_FORMAT: &'static [(&str, &str, Option<Tz>)] = &[
     ("Standard Format in UTC", "%c", None),
     ("Standard Format with Tz", "%+", None),
     ("UNIX EPOCH", "%s", None),
     ("UNIX EPOCH (ms)", "%s%3f", None),
-    ("Rendered Format (Orig)", "%a %b %d %H:%M:%S %Z %Y", None),
+    ("Rendered Format (Offset)", "%a %b %d %H:%M:%S %Z %Y", None),
     (
         "Rendered Format (UTC)",
         "%a %b %d %H:%M:%S %Z %Y",
@@ -166,6 +166,7 @@ mod test {
         let file = BufReader::new(&f);
         for line in file.lines() {
             let l = line.unwrap();
+            println!("Validating {} as input.", l);
             let arr = l.split(" ").collect();
             match parse_time_from_array(arr) {
                 Ok(_) => {}
@@ -188,6 +189,14 @@ fn parse_input(input: &str, local_timezone: FixedOffset) -> Option<DateTime<Fixe
         };
 
         return Some(timestamp.with_timezone(&FixedOffset::east(0)));
+    }
+
+    if let Ok(parsed) = DateTime::parse_from_rfc3339(input) {
+        return Some(parsed);
+    }
+
+    if let Ok(parsed) = DateTime::parse_from_rfc2822(input) {
+        return Some(parsed);
     }
 
     for format in build_all_time_parse_options() {

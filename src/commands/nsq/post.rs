@@ -80,7 +80,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
     let handle = ratelimit.make_handle();
     thread::spawn(move || ratelimit.run());
 
-    let base_url = match super::api::get_base_url_for_topic(options.nsq_lookup, &options.topic) {
+    let base_url = match super::api::get_base_url_for_topic(&options.nsq_lookup, &options.topic) {
         Some(url) => url,
         None => { return Err(CliError::new("Unable to get NSQ Host", 2)) }
     };

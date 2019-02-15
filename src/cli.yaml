@@ -2,92 +2,117 @@ name: toolkit
 about: Toolkit of useful dev tools
 
 settings:
-    - SubCommandRequiredElseHelp
+  - SubCommandRequiredElseHelp
 args:
-    - debug: 
-        help: Turn debugging information on
-        short: d
-        long: debug
-        multiple: true
-        global: true
+  - debug:
+      help: Turn debugging information on
+      short: d
+      long: debug
+      multiple: true
+      global: true
 
-    - quite: 
-        help: Only error output will be displayed
-        short: q
-        long: quite
-        global: true
+  - quite:
+      help: Only error output will be displayed
+      short: q
+      long: quite
+      global: true
 
-    - warn: 
-        help: Warning and Error level output will be displayed
-        short: w
-        long: warn
-        global: true
+  - warn:
+      help: Warning and Error level output will be displayed
+      short: w
+      long: warn
+      global: true
 
 subcommands:
-    - time:
-        alias: date
-        settings:
-            - ArgRequiredElseHelp
-        about: Shows the known versions for a given tool
-        args:
-            - example:
-                help: Output the current time in all understood formats
-                long: example
-            - INPUT:
-                help: Input to be parsed, will be merged into a single string
-                takes_value: true
-                multiple: true
-    - har:
-        about: Har...dy up those the matches!
-        long_about: Take a Har file, apply some filtering, then output a new Har file
-        args:
-          - filter_domain:
-              help: Include requests for specificed domain
-              long: filter-domain
-              takes_value: true
-              multiple: true
-          - filter_path:
-              help: A Regex to filter the path on
-              long: filter-path
-              takes_value: true
-              multiple: true
-          - filter_context_type:
-              help: Include request that respond with specific types
-              long: filter-content-type
-              takes_value: true
-              multiple: true
-          - output:
-              help: Output to a file instead of stdout
-              long: output
-              short: o
-              takes_value: true
-          - output_format:
-              help: Change the output format
-              long: format
-              short: f
-              takes_value: true
-              default_value: har
-              requires: 
-                - output
-              possible_values:
-                - har 
-                - html 
-                - md 
-                - markdown
-          - INPUT:
-              help: Path to file to process
-              takes_value: true
-              required: true
-    - nsq:
-        about: Nifty NSQ tools
-        settings:
-            - SubcommandRequiredElseHelp
-        subcommands:
-          - send:
-              about: Send a \n deliminated file to an NSQ topic
-              settings:
-                - ArgRequiredElseHelp
-              args:
+  - time:
+      alias: date
+      settings:
+        - ArgRequiredElseHelp
+      about: Shows the known versions for a given tool
+      args:
+        - example:
+            help: Output the current time in all understood formats
+            long: example
+        - INPUT:
+            help: Input to be parsed, will be merged into a single string
+            takes_value: true
+            multiple: true
+  - har:
+      about: Har...dy up those the matches!
+      long_about: Take a Har file, apply some filtering, then output a new Har file
+      args:
+        - filter_domain:
+            help: Include requests for specificed domain
+            long: filter-domain
+            takes_value: true
+            multiple: true
+        - filter_path:
+            help: A Regex to filter the path on
+            long: filter-path
+            takes_value: true
+            multiple: true
+        - filter_context_type:
+            help: Include request that respond with specific types
+            long: filter-content-type
+            takes_value: true
+            multiple: true
+        - output:
+            help: Output to a file instead of stdout
+            long: output
+            short: o
+            takes_value: true
+        - output_format:
+            help: Change the output format
+            long: format
+            short: f
+            takes_value: true
+            default_value: har
+            requires:
+              - output
+            possible_values:
+              - har
+              - html
+              - md
+              - markdown
+        - INPUT:
+            help: Path to file to process
+            takes_value: true
+            required: true
+  - nsq:
+      about: Nifty NSQ tools
+      settings:
+        - SubcommandRequiredElseHelp
+      subcommands:
+        - status:
+            about: Shows the status of NSQ Topic
+            settings:
+              - ArgRequiredElseHelp
+            args:
+                - count:
+                    help: How many times should I report back?
+                    short: c
+                    long: count
+                    takes_value: true
+                    default_value: "4"
+                - nsq_lookup_host:
+                    help: Host to NSQ Lookup
+                    long: lookupd-host
+                    takes_value: true
+                    required: true
+                - nsq_lookup_port:
+                    help: Port to NSQ Lookup
+                    long: lookupd-port
+                    takes_value: true
+                    default_value: "4161"
+                - TOPIC:
+                    help: Which topic should be check on
+                    required: true
+                    takes_value: true
+        - send:
+            about: Send a \n deliminated file to an NSQ topic
+            settings:
+              - ArgRequiredElseHelp
+            args:
                 - offset:
                     help: Where in the file to start posting
                     long: offset
@@ -100,7 +125,7 @@ subcommands:
                     help: Limit the rate we send posts
                     long: rate
                     takes_value: true
-                    default_value: '200'
+                    default_value: "200"
                 - nsq_lookup_host:
                     help: Host to NSQ Lookup
                     long: lookupd-host
@@ -110,7 +135,7 @@ subcommands:
                     help: Port to NSQ Lookup
                     long: lookupd-port
                     takes_value: true
-                    default_value: '4161'
+                    default_value: "4161"
                 - TOPIC:
                     help: Which topic should be posted to
                     required: true
@@ -119,22 +144,23 @@ subcommands:
                     help: File to post line by line to NSQ
                     required: true
                     takes_value: true
-    - json:
-        about: Nifty JSON tools
-        settings:
+  - json:
+      about: Nifty JSON tools
+      settings:
             - SubcommandRequiredElseHelp
-        subcommands:
-          - filter:
-              about: Filter new-line delemited JSON stream to the newest message
-              long_about: If a JSON blob has both an ID that's unique, and a timestamp/version field. Filter the stream for the latest ID/version field.
-              settings:
+      subcommands:
+        - latest:
+            about: Filter new-line delemited JSON stream to the newest message
+            long_about: If a JSON blob has both an ID that's unique, and a timestamp/version field. Filter the stream for the latest ID/version field.
+            settings:
                 - ArgRequiredElseHelp
-              args:
+            args:
                 - id:
                     help: A field like a ID or GUID that will be unique between different logical units, but the same for the same unit at different times
                     long: id-path
                     required: true
                     takes_value: true
+                    multiple: true
                 - seq:
                     help: Path to a value that will be greater than a previous value, based on order the the blob was created
                     long: sequence-path
@@ -143,11 +169,11 @@ subcommands:
                 - OUTPUT:
                     help: File to write output to
                     required: true
-                    takes_value: true      
+                    takes_value: true
 
 groups:
-    - logging:
-        args:
-            - debug
-            - warn
-            - quite
+  - logging:
+      args:
+        - debug
+        - warn
+        - quite

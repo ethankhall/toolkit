@@ -1,21 +1,22 @@
 use url::Url;
 
 #[derive(Serialize, Deserialize)]
-struct StatusTopicsDetails {
-    topics: Vec<TopicDetails>
+pub struct StatusTopicsDetails {
+    pub topics: Vec<TopicDetails>
 }
 
 #[derive(Serialize, Deserialize)]
-struct TopicDetails {
-    topic_name: String,
-    depth: i32,
-    channels: Vec<TopicChannel>,
+pub struct TopicDetails {
+    pub topic_name: String,
+    pub depth: i32,
+    pub channels: Vec<TopicChannel>,
 }
 
 #[derive(Serialize, Deserialize)]
-struct TopicChannel {
-    depth: i32,
-    in_flight_count: i32,
+pub struct TopicChannel {
+    pub depth: i32,
+    pub in_flight_count: i32,
+    pub channel_name: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -39,7 +40,7 @@ struct LookupData {
     producers: Vec<LookupProducer>
 }
 
-pub fn get_base_url_for_topic(nsq_lookup: String, topic: &str) -> Option<String> {
+pub fn get_base_url_for_topic(nsq_lookup: &str, topic: &str) -> Option<String> {
     let url = format!("http://{}/lookup?topic={}", nsq_lookup, topic);
     let url = Url::parse(&url).expect("URL to be valid");
     let body = match reqwest::get(url) {
@@ -73,6 +74,13 @@ pub fn get_base_url_for_topic(nsq_lookup: String, topic: &str) -> Option<String>
 }
 
 pub fn get_queue_size(base_url: &str, topic: &str) -> Option<(i32, i32)> {
+    match get_topic_status(base_url, topic) {
+        Some(root) => extract_size_from_body(root, topic),
+        None => None
+    }
+}
+
+pub fn get_topic_status(base_url: &str, topic: &str) -> Option<StatusTopicsDetails> {
     let topic_url = format!("{}/stats?format=json&topic={}", base_url, topic);
     let topic_url = Url::parse(&topic_url).expect("URL to be valid");
 
@@ -80,7 +88,7 @@ pub fn get_queue_size(base_url: &str, topic: &str) -> Option<(i32, i32)> {
         if let Ok(body) = response.text() {
             let json_body: Result<StatusTopicsDetails, _> = serde_json::from_str(&body);
             if let Ok(root) = json_body {
-                return extract_size_from_body(root, topic);
+                return Some(root);
             } else {
                 warn!("Unable to deserialize {} from the stats", body);
             }

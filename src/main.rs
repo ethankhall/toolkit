@@ -1,6 +1,7 @@
 #![feature(slice_concat_ext)]
 
 extern crate chrono;
+extern crate colored;
 extern crate chrono_tz;
 extern crate fern;
 #[macro_use]
@@ -24,9 +25,10 @@ mod commands;
 use clap::App;
 
 use commands::har::exec::do_har_command;
-use commands::json::do_json_filter_command;
+use commands::json::do_json_latest_command;
 use commands::time::do_time_command;
 use commands::nsq::post::do_send_command;
+use commands::nsq::stats::do_status_command;
 use kopy_common_lib::configure_logging;
 
 fn main() {
@@ -45,11 +47,12 @@ fn main() {
         ("time", Some(time_matches)) => do_time_command(time_matches),
         ("har", Some(har_matches)) => do_har_command(har_matches),
         ("json", Some(json_matches)) => match json_matches.subcommand() {
-            ("filter", Some(filter_matches)) => do_json_filter_command(filter_matches),
+            ("latest", Some(filter_matches)) => do_json_latest_command(filter_matches),
             _ => unreachable!(),
         },
         ("nsq", Some(nsq_matches)) => match nsq_matches.subcommand() {
             ("send", Some(send_matches)) => do_send_command(send_matches),
+            ("status", Some(send_matches)) => do_status_command(send_matches),
             _ => unreachable!(),
         },
         _ => unreachable!(),

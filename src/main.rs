@@ -11,6 +11,7 @@ extern crate regex;
 extern crate serde;
 extern crate serde_json;
 extern crate reqwest;
+extern crate flate2;
 extern crate url;
 #[macro_use]
 extern crate clap;
@@ -27,6 +28,7 @@ use clap::App;
 use commands::har::exec::do_har_command;
 use commands::json::do_json_latest_command;
 use commands::time::do_time_command;
+use commands::s3::do_s3_copy;
 use commands::nsq::post::do_send_command;
 use commands::nsq::stats::do_status_command;
 use kopy_common_lib::configure_logging;
@@ -48,6 +50,10 @@ fn main() {
         ("har", Some(har_matches)) => do_har_command(har_matches),
         ("json", Some(json_matches)) => match json_matches.subcommand() {
             ("latest", Some(filter_matches)) => do_json_latest_command(filter_matches),
+            _ => unreachable!(),
+        },
+        ("s3", Some(json_matches)) => match json_matches.subcommand() {
+            ("copy", Some(filter_matches)) => do_s3_copy(filter_matches),
             _ => unreachable!(),
         },
         ("nsq", Some(nsq_matches)) => match nsq_matches.subcommand() {

@@ -21,7 +21,9 @@ impl std::convert::From<std::io::Error> for CliError {
     }
 }
 
+pub mod file;
 pub mod har;
+pub mod s3;
 pub mod json;
 pub mod time;
 pub mod nsq;

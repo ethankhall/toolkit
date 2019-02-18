@@ -144,32 +144,59 @@ subcommands:
                     help: File to post line by line to NSQ
                     required: true
                     takes_value: true
+#   - s3:
+#         about: Things to help with S3. Because aws-cli has a bunch of deps
+#         settings:
+#             - SubcommandRequiredElseHelp
+#         args:
+#             - copy:
+#                 about: Copy from *FROM* S3 locally.
+#                 settings:
+#                     - ArgRequiredElseHelp
+#                 args:
+#                     - SOURCE:
+#                         help: S3 uri for the file/folder to download
+#                         required: true
+#                         takes_value: true
+#                     - DEST:
+#                         help: The path to copy to locally
+#                         required: true
+#                         takes_value: true
+#                     - recurse:
+#                         help: Recurse down
+#                         short: r
+#                         long: recurse
   - json:
-      about: Nifty JSON tools
-      settings:
+        about: Nifty JSON tools
+        settings:
             - SubcommandRequiredElseHelp
-      subcommands:
-        - latest:
-            about: Filter new-line delemited JSON stream to the newest message
-            long_about: If a JSON blob has both an ID that's unique, and a timestamp/version field. Filter the stream for the latest ID/version field.
-            settings:
-                - ArgRequiredElseHelp
-            args:
-                - id:
-                    help: A field like a ID or GUID that will be unique between different logical units, but the same for the same unit at different times
-                    long: id-path
-                    required: true
-                    takes_value: true
-                    multiple: true
-                - seq:
-                    help: Path to a value that will be greater than a previous value, based on order the the blob was created
-                    long: sequence-path
-                    takes_value: true
-                    required: true
-                - OUTPUT:
-                    help: File to write output to
-                    required: true
-                    takes_value: true
+        subcommands:
+            - latest:
+                about: Filter new-line delemited JSON stream to the newest message
+                long_about: If a JSON blob has both an ID that's unique, and a timestamp/version field. Filter the stream for the latest ID/version field.
+                settings:
+                    - ArgRequiredElseHelp
+                args:
+                    - id:
+                        help: A field like a ID or GUID that will be unique between different logical units, but the same for the same unit at different times
+                        long: id-path
+                        required: true
+                        takes_value: true
+                        multiple: true
+                    - seq:
+                        help: Path to a value that will be greater than a previous value, based on order the the blob was created
+                        long: sequence-path
+                        takes_value: true
+                        required: true
+                    - OUTPUT:
+                        help: File to write output to
+                        required: true
+                        takes_value: true
+                    - INPUT:
+                        help: File(s) to read from. Use - for stdin
+                        required: true
+                        takes_value: true
+                        multiple: true
 
 groups:
   - logging:

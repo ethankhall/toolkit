@@ -52,9 +52,10 @@ pub fn do_time_command(args: &ArgMatches) -> Result<(), CliError> {
         return Ok(());
     } else {
         let input_array: Vec<&str> = args.values_of("INPUT").unwrap().collect();
-        return match parse_time_from_array(input_array.clone()) {
-            Ok(date) => Ok(render_output(date)),
-            Err(input) => {
+        return match (parse_time_from_array(input_array.clone()), args.is_present("utc_only")) {
+            (Ok(date), true) => Ok(render_utc(date)),
+            (Ok(date), false) => Ok(render_full_output(date)),
+            (Err(input), _) => {
                 error!(
                     "Unable to understand `{}`, please check our know formats with --example",
                     input
@@ -83,7 +84,7 @@ fn print_examples() {
     }
 }
 
-fn render_output(input: DateTime<FixedOffset>) {
+fn render_full_output(input: DateTime<FixedOffset>) {
     println!("Understood the date was {}", input);
     println!();
     for (text, format, zone) in EXPORT_FORMAT {
@@ -94,6 +95,10 @@ fn render_output(input: DateTime<FixedOffset>) {
 
         println!("{0: >27} || {1:}", text, this_format.to_string());
     }
+}
+
+fn render_utc(input: DateTime<FixedOffset>) {
+    println!("{}",input.with_timezone(&Tz::UTC).format("%a %b %d %H:%M:%S %Z %Y"));
 }
 
 pub fn build_all_time_parse_options() -> Vec<String> {

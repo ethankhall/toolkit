@@ -33,6 +33,10 @@ subcommands:
         - example:
             help: Output the current time in all understood formats
             long: example
+        - utc_only:
+            help: Only output UTC time
+            long: utc-only
+            short: u
         - INPUT:
             help: Input to be parsed, will be merged into a single string
             takes_value: true

@@ -29,7 +29,15 @@ jobs:
       vmImage: 'ubuntu-16.04'
     steps:
       - script: |
+          wget https://github.com/ethankhall/crom/releases/download/v0.1.9/crom-linux-musl.zip -d /tmp
+          mkdir ~/bin
+          unzip /tmp/crom-linux-musl.zip crom -d ~/bin
+          chmod +x ~/bin/crom
+          ~/bin/crom update-version --pre-release release
+          ls -al .
           chmod a+wr .
+          docker run --rm -t -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:nightly ls -al
+          docker run --rm -t -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:nightly id
           docker run --rm -t -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:nightly cargo build --release
       - task: PublishBuildArtifacts@1
         displayName: "Publish Artifact: Release Build"
@@ -44,10 +52,13 @@ jobs:
     steps:
       - script: |
           curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
+          wget https://github.com/ethankhall/crom/releases/download/v0.1.9/crom-mac.tar.gz
+          mkdir ~/bin
+          tar -xvf crom-mac.tar.gz -C ~/bin
+          chmod +x ~/bin/crom
+          ~/bin/crom update-version --pre-release release
           $HOME/.cargo/bin/cargo test
           $HOME/.cargo/bin/cargo build --release
-          pwd
-          ls target/release
       - task: PublishBuildArtifacts@1
         displayName: "Publish Artifact: Release Build"
         inputs:
@@ -69,12 +80,13 @@ jobs:
           downloadType: specific
           downloadPath: $(System.ArtifactsDirectory)/artifacts
       - script: |
-          curl --location https://github.com/ethankhall/release-manager/releases/download/v0.1.9/release-manager-linux -o ~/release-manager
-          chmod +x ~/release-manager
+          wget https://github.com/ethankhall/crom/releases/download/v0.1.9/crom-linux-musl.zip
+          unzip crom-linux-musl.zip crom -d ~
+          chmod +x ~/crom
           sudo apt-get install -y tree
           tree $SYSTEM_ARTIFACTSDIRECTORY
-          ~/release-manager github release-and-bump
-          ~/release-manager github artifacts \
+          ~/crom tag-version --source local,github --ignore-changes
+          ~/crom upload-artifacts --root-artifact-path=$SYSTEM_ARTIFACTSDIRECTORY linux mac windows
             toolkit-windows.exe=$SYSTEM_ARTIFACTSDIRECTORY/artifacts/toolkit-windows/toolkit.exe \
             toolkit-mac=$SYSTEM_ARTIFACTSDIRECTORY/artifacts/toolkit-mac/toolkit \
             toolkit-linux=$SYSTEM_ARTIFACTSDIRECTORY/artifacts/toolkit-linux/toolkit

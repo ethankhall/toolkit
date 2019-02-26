@@ -98,7 +98,7 @@ fn render_full_output(input: DateTime<FixedOffset>) {
 }
 
 fn render_utc(input: DateTime<FixedOffset>) {
-    println!("{}",input.with_timezone(&Tz::UTC).format("%a %b %d %H:%M:%S %Z %Y"));
+    println!("{}", input);
 }
 
 pub fn build_all_time_parse_options() -> Vec<String> {

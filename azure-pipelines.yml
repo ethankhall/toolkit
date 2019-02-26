@@ -30,9 +30,10 @@ jobs:
     steps:
       - script: |
           wget https://github.com/ethankhall/crom/releases/download/v0.1.9/crom-linux-musl.zip
-          unzip crom-linux-musl.zip crom -d ~
-          chmod +x ~/crom
-          ~/crom update-version --pre-release release
+          mkdir ~/bin
+          unzip crom-linux-musl.zip crom -d ~/bin
+          chmod +x ~/bin/crom
+          ~/bin/crom update-version --pre-release release
           chmod a+wr .
           docker run --rm -t -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:nightly cargo build --release
       - task: PublishBuildArtifacts@1
@@ -49,9 +50,10 @@ jobs:
       - script: |
           curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
           wget https://github.com/ethankhall/crom/releases/download/v0.1.9/crom-mac.tar.gz
-          tar -xvf crom-mac.tar.gz -C ~
-          chmod +x ~/crom
-          ~/crom update-version --pre-release release
+          mkdir ~/bin
+          tar -xvf crom-mac.tar.gz -C ~/bin
+          chmod +x ~/bin/crom
+          ~/bin/crom update-version --pre-release release
           $HOME/.cargo/bin/cargo test
           $HOME/.cargo/bin/cargo build --release
       - task: PublishBuildArtifacts@1

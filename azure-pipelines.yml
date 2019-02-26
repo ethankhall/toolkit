@@ -29,6 +29,7 @@ jobs:
       vmImage: 'ubuntu-16.04'
     steps:
       - script: |
+          set -e
           wget https://github.com/ethankhall/crom/releases/download/v0.1.9/crom-linux-musl.zip -d /tmp
           mkdir ~/bin
           unzip /tmp/crom-linux-musl.zip crom -d ~/bin
@@ -51,6 +52,7 @@ jobs:
       vmImage: 'macOS-10.13'
     steps:
       - script: |
+          set -e
           curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
           wget https://github.com/ethankhall/crom/releases/download/v0.1.9/crom-mac.tar.gz
           mkdir ~/bin
@@ -80,10 +82,13 @@ jobs:
           downloadType: specific
           downloadPath: $(System.ArtifactsDirectory)/artifacts
       - script: |
-          wget https://github.com/ethankhall/crom/releases/download/v0.1.9/crom-linux-musl.zip
-          unzip crom-linux-musl.zip crom -d ~
-          chmod +x ~/crom
+          set -e
+          wget https://github.com/ethankhall/crom/releases/download/v0.1.9/crom-linux-musl.zip -d /tmp
+          mkdir ~/bin
+          unzip /tmp/crom-linux-musl.zip crom -d ~/bin
+          chmod +x ~/bin/crom
           sudo apt-get install -y tree
           tree $SYSTEM_ARTIFACTSDIRECTORY
-          ~/crom tag-version --source local,github --ignore-changes
-          ~/crom upload-artifacts --root-artifact-path=$SYSTEM_ARTIFACTSDIRECTORY linux mac windows
+          git status
+          ~/bin/crom tag-version --source local,github --ignore-changes
+          ~/bin/crom upload-artifacts --root-artifact-path=$SYSTEM_ARTIFACTSDIRECTORY linux mac windows

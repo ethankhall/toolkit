@@ -1,0 +1,18 @@
+pattern = 'v0.2.%d'
+types = ["Cargo"]
+message-template = "Created {version} for release."
+
+[artifact.windows]
+paths = { "toolkit.exe" = "artifacts/toolkit-windows/toolkit.exe" }
+compress = { name = "toolkit-windows.zip", format = "zip" }
+target = "GitHub"
+
+[artifact.mac]
+paths = {crom = "artifacts/toolkit-mac/toolkit"}
+compress = { name = "toolkit-mac.tar.gz", format = "tgz" }
+target = "GitHub"
+
+[artifact.linux]
+paths = {crom = "artifacts/toolkit-linux/toolkit"}
+compress = { name = "toolkit-linux-musl.zip", format = "zip" }
+target = "GitHub"

@@ -87,6 +87,3 @@ jobs:
           tree $SYSTEM_ARTIFACTSDIRECTORY
           ~/crom tag-version --source local,github --ignore-changes
           ~/crom upload-artifacts --root-artifact-path=$SYSTEM_ARTIFACTSDIRECTORY linux mac windows
-            toolkit-windows.exe=$SYSTEM_ARTIFACTSDIRECTORY/artifacts/toolkit-windows/toolkit.exe \
-            toolkit-mac=$SYSTEM_ARTIFACTSDIRECTORY/artifacts/toolkit-mac/toolkit \
-            toolkit-linux=$SYSTEM_ARTIFACTSDIRECTORY/artifacts/toolkit-linux/toolkit

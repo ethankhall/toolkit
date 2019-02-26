@@ -29,12 +29,15 @@ jobs:
       vmImage: 'ubuntu-16.04'
     steps:
       - script: |
-          wget https://github.com/ethankhall/crom/releases/download/v0.1.9/crom-linux-musl.zip
+          wget https://github.com/ethankhall/crom/releases/download/v0.1.9/crom-linux-musl.zip -d /tmp
           mkdir ~/bin
-          unzip crom-linux-musl.zip crom -d ~/bin
+          unzip /tmp/crom-linux-musl.zip crom -d ~/bin
           chmod +x ~/bin/crom
           ~/bin/crom update-version --pre-release release
+          ls -al .
           chmod a+wr .
+          docker run --rm -t -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:nightly ls -al
+          docker run --rm -t -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:nightly id
           docker run --rm -t -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:nightly cargo build --release
       - task: PublishBuildArtifacts@1
         displayName: "Publish Artifact: Release Build"

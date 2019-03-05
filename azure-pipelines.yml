@@ -49,9 +49,8 @@ jobs:
       - script: |
           set -e
           curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
-          wget https://github.com/ethankhall/crom/releases/download/v0.1.12/crom-mac.tar.gz -O /tmp/crom-mac.tar.gz
           mkdir ~/bin
-          tar -xvf /tmp/crom-mac.tar.gz -C ~/bin
+          curl --location https://github.com/ethankhall/crom/releases/download/v0.1.13/crom-mac.tar.gz | tar -xvz  -C ~/bin
           chmod +x ~/bin/crom
           ~/bin/crom update-version --pre-release release
           $HOME/.cargo/bin/cargo test
@@ -78,9 +77,8 @@ jobs:
           downloadPath: $(System.ArtifactsDirectory)/artifacts
       - script: |
           set -e
-          wget https://github.com/ethankhall/crom/releases/download/v0.1.12/crom-linux-musl.zip -O /tmp/crom-linux-musl.zip
-          mkdir ~/bin
-          unzip /tmp/crom-linux-musl.zip crom -d ~/bin
+          mkdir ~/bin || true
+          curl --location https://github.com/ethankhall/crom/releases/download/v0.1.13/crom-linux-musl.tar.gz | tar -xvz  -C ~/bin
           chmod +x ~/bin/crom
           sudo apt-get install -y tree
           tree $SYSTEM_ARTIFACTSDIRECTORY

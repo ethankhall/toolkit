@@ -30,7 +30,7 @@ jobs:
     steps:
       - script: |
           set -e
-          wget https://github.com/ethankhall/crom/releases/download/v0.1.12/crom-linux-musl.zip -d /tmp
+          wget https://github.com/ethankhall/crom/releases/download/v0.1.12/crom-linux-musl.zip -O /tmp/crom-linux-musl.zip
           mkdir ~/bin
           unzip /tmp/crom-linux-musl.zip crom -d ~/bin
           chmod +x ~/bin/crom
@@ -54,9 +54,9 @@ jobs:
       - script: |
           set -e
           curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
-          wget https://github.com/ethankhall/crom/releases/download/v0.1.12/crom-mac.tar.gz
+          wget https://github.com/ethankhall/crom/releases/download/v0.1.12/crom-mac.tar.gz -O /tmp/crom-mac.tar.gz
           mkdir ~/bin
-          tar -xvf crom-mac.tar.gz -C ~/bin
+          tar -xvf /tmp/crom-mac.tar.gz -C ~/bin
           chmod +x ~/bin/crom
           ~/bin/crom update-version --pre-release release
           $HOME/.cargo/bin/cargo test
@@ -83,7 +83,7 @@ jobs:
           downloadPath: $(System.ArtifactsDirectory)/artifacts
       - script: |
           set -e
-          wget https://github.com/ethankhall/crom/releases/download/v0.1.12/crom-linux-musl.zip -d /tmp
+          wget https://github.com/ethankhall/crom/releases/download/v0.1.12/crom-linux-musl.zip -O /tmp/crom-linux-musl.zip
           mkdir ~/bin
           unzip /tmp/crom-linux-musl.zip crom -d ~/bin
           chmod +x ~/bin/crom

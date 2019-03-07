@@ -8,11 +8,11 @@ compress = { name = "toolkit-windows.zip", format = "zip" }
 target = "GitHub"
 
 [artifact.mac]
-paths = {crom = "artifacts/toolkit-mac/toolkit"}
+paths = {toolkit = "artifacts/toolkit-mac/toolkit"}
 compress = { name = "toolkit-mac.tar.gz", format = "tgz" }
 target = "GitHub"
 
 [artifact.linux]
-paths = {crom = "artifacts/toolkit-linux/toolkit"}
-compress = { name = "toolkit-linux-musl.zip", format = "zip" }
+paths = {toolkit = "artifacts/toolkit-linux/toolkit"}
+compress = { name = "toolkit-linux-musl.tar.gz", format = "tgz" }
 target = "GitHub"

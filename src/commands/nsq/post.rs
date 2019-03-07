@@ -2,7 +2,7 @@ use clap::ArgMatches;
 use std::fs::File;
 use std::path::PathBuf;
 use std::io::{self, BufRead, BufReader, Write};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering, ATOMIC_BOOL_INIT, ATOMIC_USIZE_INIT};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -15,10 +15,10 @@ use crate::commands::CliError;
 
 const RATE_LIMIT: &str = "200";
 
-static THREADS_RUNNING: AtomicBool = ATOMIC_BOOL_INIT;
-static ERRORS: AtomicUsize = ATOMIC_USIZE_INIT;
-static SENT: AtomicUsize = ATOMIC_USIZE_INIT;
-static OFFSET: AtomicUsize = ATOMIC_USIZE_INIT;
+static THREADS_RUNNING: AtomicBool = AtomicBool::new(false);
+static ERRORS: AtomicUsize = AtomicUsize::new(0);
+static SENT: AtomicUsize = AtomicUsize::new(0);
+static OFFSET: AtomicUsize = AtomicUsize::new(0);
 
 struct NsqOptions {
     offset: usize,

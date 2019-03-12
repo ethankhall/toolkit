@@ -1,16 +1,16 @@
 #![feature(slice_concat_ext)]
 
 extern crate chrono;
-extern crate colored;
 extern crate chrono_tz;
+extern crate colored;
 extern crate fern;
 #[macro_use]
 extern crate serde_derive;
 extern crate mime;
 extern crate regex;
+extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
-extern crate reqwest;
 extern crate url;
 #[macro_use]
 extern crate clap;
@@ -19,6 +19,9 @@ extern crate json;
 extern crate log;
 #[macro_use]
 extern crate kopy_common_lib;
+#[macro_use]
+extern crate prettytable;
+extern crate termion;
 
 mod commands;
 
@@ -26,9 +29,9 @@ use clap::App;
 
 use commands::har::exec::do_har_command;
 use commands::json::do_json_latest_command;
-use commands::time::do_time_command;
 use commands::nsq::post::do_send_command;
 use commands::nsq::stats::do_status_command;
+use commands::time::do_time_command;
 use kopy_common_lib::configure_logging;
 
 fn main() {

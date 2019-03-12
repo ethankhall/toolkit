@@ -2,18 +2,19 @@ use url::Url;
 
 #[derive(Serialize, Deserialize)]
 pub struct StatusTopicsResponse {
-    pub data: StatusTopicsDetails
+    pub data: StatusTopicsDetails,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct StatusTopicsDetails {
-    pub topics: Vec<TopicDetails>
+    pub topics: Vec<TopicDetails>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct TopicDetails {
     pub topic_name: String,
     pub depth: i32,
+    pub message_count: i32,
     pub channels: Vec<TopicChannel>,
 }
 
@@ -31,57 +32,65 @@ struct LookupProducer {
     broadcast_address: String,
     tcp_port: i32,
     http_port: i32,
-    version: String
+    version: String,
 }
 
 #[derive(Serialize, Deserialize)]
 struct LookupResponse {
     status_code: i32,
-    data: LookupData
+    data: LookupData,
 }
 
 #[derive(Serialize, Deserialize)]
 struct LookupData {
-    producers: Vec<LookupProducer>
+    producers: Vec<LookupProducer>,
 }
 
-pub fn get_base_url_for_topic(nsq_lookup: &str, topic: &str) -> Option<String> {
+pub fn get_base_url_for_topic(nsq_lookup: &str, topic: &str) -> Vec<String> {
     let url = format!("http://{}/lookup?topic={}", nsq_lookup, topic);
     let url = Url::parse(&url).expect("URL to be valid");
     let body = match reqwest::get(url) {
-        Err(e) => { 
+        Err(e) => {
             error!("Unable to talk to NSQ: {}", e.to_string());
-            return None;
-        },
+            return vec![];
+        }
         Ok(mut resp) => {
             if !resp.status().is_success() {
                 error!("NSQ returned with an error: {:#?}", resp.text());
-                return None;
+                return vec![];
             } else {
                 resp.text().unwrap()
             }
         }
     };
 
-    let json_body: LookupResponse = serde_json::from_str(&body).expect("To be able to get LookupResponse from NSQ API");
+    let json_body: LookupResponse =
+        serde_json::from_str(&body).expect("To be able to get LookupResponse from NSQ API");
+    let mut hosts: Vec<String> = Vec::new();
+
     for producer in json_body.data.producers {
-        let base_url = format!("http://{}:{}", producer.broadcast_address, producer.http_port);
+        let base_url = format!(
+            "http://{}:{}",
+            producer.broadcast_address, producer.http_port
+        );
 
         let url = format!("{}/ping", base_url);
         let url = Url::parse(&url).expect("URL to be valid");
         if let Ok(_) = reqwest::get(url) {
-            return Some(base_url);
+            hosts.push(base_url);
         }
     }
 
-    error!("Unable to connect to NSQ host to send messages!");
-    None
+    if hosts.is_empty() {
+        error!("Unable to connect to NSQ host to send messages!");
+    }
+    hosts
 }
 
 pub fn get_queue_size(base_url: &str, topic: &str) -> Option<(i32, i32)> {
     match get_topic_status(base_url, topic) {
         Some(root) => extract_size_from_body(root, topic),
-        None => None
+        None => None,
     }
 }
 
@@ -108,7 +117,8 @@ pub fn get_topic_status(base_url: &str, topic: &str) -> Option<StatusTopicsDetai
 }
 
 fn extract_size_from_body(body: StatusTopicsDetails, topic: &str) -> Option<(i32, i32)> {
-    let topic_details: Option<TopicDetails> = body.topics.into_iter().find(|x| x.topic_name == topic);
+    let topic_details: Option<TopicDetails> =
+        body.topics.into_iter().find(|x| x.topic_name == topic);
 
     match topic_details {
         None => None,

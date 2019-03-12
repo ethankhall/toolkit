@@ -52,15 +52,18 @@ fn build_key(keys: &Vec<Vec<String>>, json_input: &JsonValue) -> Option<String> 
     return Some(key_list.join(":"));
 }
 
-pub fn do_json_latest_command(args: &ArgMatches) -> Result<(), CliError>{
+pub fn do_json_latest_command(args: &ArgMatches) -> Result<(), CliError> {
     let output_path = args.value_of("OUTPUT").unwrap();
     let output_path = PathBuf::from(output_path);
 
-    let id_fields: Vec<Vec<String>> = args.values_of("id").unwrap().into_iter().map(|x| parse_path(x)).collect();
+    let id_fields: Vec<Vec<String>> = args
+        .values_of("id")
+        .unwrap()
+        .into_iter()
+        .map(|x| parse_path(x))
+        .collect();
 
-    let version_path: Vec<String> = parse_path(args
-        .value_of("seq")
-        .unwrap());
+    let version_path: Vec<String> = parse_path(args.value_of("seq").unwrap());
 
     let file = File::create(output_path).unwrap();
     let mut file = LineWriter::new(file);

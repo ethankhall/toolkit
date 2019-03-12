@@ -97,7 +97,6 @@ subcommands:
                     short: c
                     long: count
                     takes_value: true
-                    default_value: "4"
                 - nsq_lookup_host:
                     help: Host to NSQ Lookup
                     long: lookupd-host
@@ -112,6 +111,7 @@ subcommands:
                     help: Which topic should be check on
                     required: true
                     takes_value: true
+                    multiple: true
         - send:
             about: Send a \n deliminated file to an NSQ topic
             settings:

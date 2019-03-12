@@ -18,7 +18,8 @@ static DATE_FORMATS: &'static [&str] = &[
 
 static TIME_FORMATS: &'static [&str] = &["%H:%M", "%H:%M:%S", "%I:%M:%S %p", "%I:%M:%S %P"];
 static TIMEZONE_FORMATS: &'static [&str] = &["%z", "%:z", "%#z"];
-static DATETIME_FORMATS: &'static [&str] = &["%c", "%+", "%Y-%m-%dT%H:%M:%S%:z", "%a %b %d %H:%M:%S %Y"];
+static DATETIME_FORMATS: &'static [&str] =
+    &["%c", "%+", "%Y-%m-%dT%H:%M:%S%:z", "%a %b %d %H:%M:%S %Y"];
 
 static EXPORT_FORMAT: &'static [(&str, &str, Option<Tz>)] = &[
     ("Standard Format in UTC", "%c", None),
@@ -52,7 +53,10 @@ pub fn do_time_command(args: &ArgMatches) -> Result<(), CliError> {
         return Ok(());
     } else {
         let input_array: Vec<&str> = args.values_of("INPUT").unwrap().collect();
-        return match (parse_time_from_array(input_array.clone()), args.is_present("utc_only")) {
+        return match (
+            parse_time_from_array(input_array.clone()),
+            args.is_present("utc_only"),
+        ) {
             (Ok(date), true) => Ok(render_utc(date)),
             (Ok(date), false) => Ok(render_full_output(date)),
             (Err(input), _) => {

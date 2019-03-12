@@ -1,6 +1,6 @@
 [package]
 name = "toolkit"
-version = "0.1.16"
+version = "99.9.999-SNAPSHOT"
 authors = ["Ethan Hall <ethankhall@pm.me>"]
 edition = "2018"
 
@@ -24,3 +24,5 @@ ratelimit = "0.4"
 reqwest = { version = "0.9", features = ["rustls-tls"] }
 crossbeam-channel = "0.3"
 kopy-common-lib = { git = "https://github.com/ethankhall/rust-shared.git", rev = "84a38d080b5a066c7443e6a46e043708d2a53f39" }
+prettytable-rs = "0.8"
+termion = "*"

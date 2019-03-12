@@ -44,7 +44,7 @@ pub struct RequestEntry {
     pub cookies: Vec<NameValueEntry>,
     pub query_string: Vec<NameValueEntry>,
     pub headers_size: i32,
-    pub post_data: Option<serde_json::Value>
+    pub post_data: Option<serde_json::Value>,
 }
 
 #[serde(rename_all = "camelCase")]

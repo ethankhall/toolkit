@@ -1,7 +1,7 @@
 use clap::ArgMatches;
 use std::fs::File;
-use std::path::PathBuf;
 use std::io::{self, BufRead, BufReader, Write};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
@@ -26,7 +26,7 @@ struct NsqOptions {
     rate: usize,
     nsq_lookup: String,
     topic: String,
-    file: PathBuf
+    file: PathBuf,
 }
 
 impl NsqOptions {
@@ -57,7 +57,14 @@ impl NsqOptions {
             limit = number_of_lines;
         }
 
-        NsqOptions { offset, limit, rate, nsq_lookup: format!("{}:{}", nsq_lookup_host, nsq_lookup_port), topic: s!(dest_topic), file: PathBuf::from(file_name)}
+        NsqOptions {
+            offset,
+            limit,
+            rate,
+            nsq_lookup: format!("{}:{}", nsq_lookup_host, nsq_lookup_port),
+            topic: s!(dest_topic),
+            file: PathBuf::from(file_name),
+        }
     }
 }
 
@@ -80,9 +87,11 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
     let handle = ratelimit.make_handle();
     thread::spawn(move || ratelimit.run());
 
-    let base_url = match super::api::get_base_url_for_topic(&options.nsq_lookup, &options.topic) {
-        Some(url) => url,
-        None => { return Err(CliError::new("Unable to get NSQ Host", 2)) }
+    let urls = super::api::get_base_url_for_topic(&options.nsq_lookup, &options.topic);
+    let base_url = if urls.is_empty() {
+        return Err(CliError::new("Unable to get NSQ Host", 2));
+    } else {
+        urls.first().unwrap()
     };
 
     let submit_url = format!("{}/pub?topic={}", base_url, &options.topic);
@@ -95,7 +104,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
 
     let (s1, r1) = bounded(20);
 
-      let mut threads = Vec::new();
+    let mut threads = Vec::new();
 
     for _ in 0..10 {
         let reciever = r1.clone();
@@ -105,7 +114,6 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
             process_messages(reciever, url, &mut limiter);
         }));
     }
-
 
     let f = File::open(options.file)?;
     let file = BufReader::new(&f);
@@ -130,7 +138,9 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
 
         if counter % 100 == 0 {
             loop {
-                if let Some((max_depth, in_flight)) = super::api::get_queue_size(&base_url, &options.topic) {
+                if let Some((max_depth, in_flight)) =
+                    super::api::get_queue_size(&base_url, &options.topic)
+                {
                     progress_bar.set_message(&format!(
                         "In Progress: {:4}\tBacklog Size: {:4}\tOffset: {}",
                         in_flight,

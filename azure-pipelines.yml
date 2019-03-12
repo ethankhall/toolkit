@@ -9,21 +9,6 @@ trigger:
       - version.properties
       - Cargo.toml
 jobs:
-  - job: Windows_Build
-    pool:
-      vmImage: 'vs2017-win2016'
-    steps:
-      - task: PowerShell@2
-        inputs:
-          targetType: 'filePath'
-          filePath: 'ci\windows-build.ps1'
-      - task: PublishBuildArtifacts@1
-        displayName: "Publish Artifact: Release Build"
-        inputs:
-          PathtoPublish: .\target\release\toolkit.exe
-          ArtifactName: toolkit-windows
-          ArtifactType: Container
-
   - job: Linux_Build
     pool:
       vmImage: 'ubuntu-16.04'
@@ -69,7 +54,6 @@ jobs:
     dependsOn:
       - Mac_Build
       - Linux_Build
-      - Windows_Build
     steps:
       - task: DownloadBuildArtifacts@0
         inputs:

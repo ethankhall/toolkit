@@ -2,11 +2,6 @@ pattern = 'v0.2.%d'
 types = ["Cargo"]
 message-template = "Created {version} for release."
 
-[artifact.windows]
-paths = { "toolkit.exe" = "artifacts/toolkit-windows/toolkit.exe" }
-compress = { name = "toolkit-windows.zip", format = "zip" }
-target = "GitHub"
-
 [artifact.mac]
 paths = {toolkit = "artifacts/toolkit-mac/toolkit"}
 compress = { name = "toolkit-mac.tar.gz", format = "tgz" }

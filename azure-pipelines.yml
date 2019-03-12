@@ -68,4 +68,4 @@ jobs:
           tree $SYSTEM_ARTIFACTSDIRECTORY
           git status
           ~/bin/crom tag-version --source local,github --ignore-changes
-          ~/bin/crom upload-artifacts --root-artifact-path=$SYSTEM_ARTIFACTSDIRECTORY linux mac windows
+          ~/bin/crom upload-artifacts --root-artifact-path=$SYSTEM_ARTIFACTSDIRECTORY linux mac

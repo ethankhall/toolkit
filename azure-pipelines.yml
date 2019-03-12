@@ -35,7 +35,7 @@ jobs:
           set -e
           curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y
           mkdir ~/bin
-          curl --location https://github.com/ethankhall/crom/releases/download/v0.1.13/crom-mac.tar.gz | tar -xvz  -C ~/bin
+          curl --location https://github.com/ethankhall/crom/releases/download/v0.1.14/crom-mac.tar.gz | tar -xvz  -C ~/bin
           chmod +x ~/bin/crom
           ~/bin/crom update-version --pre-release release
           $HOME/.cargo/bin/cargo test
@@ -62,7 +62,7 @@ jobs:
       - script: |
           set -e
           mkdir ~/bin || true
-          curl --location https://github.com/ethankhall/crom/releases/download/v0.1.13/crom-linux-musl.tar.gz | tar -xvz  -C ~/bin
+          curl --location https://github.com/ethankhall/crom/releases/download/v0.1.14/crom-linux-musl.tar.gz | tar -xvz  -C ~/bin
           chmod +x ~/bin/crom
           sudo apt-get install -y tree
           tree $SYSTEM_ARTIFACTSDIRECTORY

@@ -19,6 +19,9 @@ static ERRORS: AtomicUsize = AtomicUsize::new(0);
 static SENT: AtomicUsize = AtomicUsize::new(0);
 static OFFSET: AtomicUsize = AtomicUsize::new(0);
 
+static API_IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+static API_DEPTH: AtomicUsize = AtomicUsize::new(0);
+
 struct NsqOptions {
     offset: usize,
     limit: usize,
@@ -90,7 +93,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
     let base_url = if urls.is_empty() {
         return Err(CliError::new("Unable to get NSQ Host", 2));
     } else {
-        urls.first().unwrap()
+        format!("{}", urls.first().unwrap())
     };
 
     let submit_url = format!("{}/pub?topic={}", base_url, &options.topic);
@@ -113,6 +116,9 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
             process_messages(reciever, url, &mut limiter);
         }));
     }
+
+    let topic = format!("{}", options.topic);
+    threads.push(thread::spawn(move || check_api_status(&base_url, &topic)));
 
     let reader = crate::commands::file::open_file(options.file.to_str().unwrap())?;
     let reader = BufReader::new(reader);
@@ -138,20 +144,18 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
 
         if counter % 100 == 0 {
             loop {
-                if let Some((max_depth, in_flight)) =
-                    super::api::get_queue_size(&base_url, &options.topic)
-                {
-                    progress_bar.set_message(&format!(
-                        "In Progress: {:4}\tBacklog Size: {:4}\tOffset: {}",
-                        in_flight,
-                        max_depth,
-                        OFFSET.load(Ordering::SeqCst)
-                    ));
-                    if max_depth < 100 {
-                        break;
-                    } else {
-                        std::thread::sleep(Duration::from_millis(100));
-                    }
+                let max_depth = API_DEPTH.load(Ordering::SeqCst);
+                let in_flight = API_IN_FLIGHT.load(Ordering::SeqCst);
+                progress_bar.set_message(&format!(
+                    "In Progress: {:4}\tBacklog Size: {:4}\tOffset: {}",
+                    in_flight,
+                    max_depth,
+                    OFFSET.load(Ordering::SeqCst)
+                ));
+                if max_depth < 100 {
+                    break;
+                } else {
+                    std::thread::sleep(Duration::from_millis(100));
                 }
             }
         }
@@ -176,6 +180,22 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
     thread::sleep(Duration::from_millis(100));
 
     return Ok(());
+}
+
+fn check_api_status(base_url: &str, topic: &str) {
+    loop {
+        if !THREADS_RUNNING.load(Ordering::SeqCst) {
+            return;
+        }
+
+        if let Some((max_depth, in_flight)) = super::api::get_queue_size(base_url, topic) {
+            let max_depth = std::cmp::max(1, max_depth) as usize;
+            let in_flight = std::cmp::max(1, in_flight) as usize;
+            API_IN_FLIGHT.store(in_flight, Ordering::SeqCst);
+            API_DEPTH.store(max_depth, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
 }
 
 fn process_messages(reciever: Receiver<String>, path: String, ratelimit: &mut ratelimit::Handle) {

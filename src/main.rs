@@ -22,6 +22,8 @@ extern crate kopy_common_lib;
 #[macro_use]
 extern crate prettytable;
 extern crate termion;
+#[macro_use]
+extern crate lazy_static;
 
 mod commands;
 

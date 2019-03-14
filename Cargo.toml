@@ -26,3 +26,4 @@ crossbeam-channel = "0.3"
 kopy-common-lib = { git = "https://github.com/ethankhall/rust-shared.git", rev = "84a38d080b5a066c7443e6a46e043708d2a53f39" }
 prettytable-rs = "0.8"
 termion = "*"
+lazy_static = "*"

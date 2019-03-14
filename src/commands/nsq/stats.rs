@@ -1,6 +1,6 @@
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::{stdout, Stdout, Write};
+use std::sync::Mutex;
 use std::{thread, time};
 
 use chrono::prelude::*;
@@ -12,6 +12,15 @@ use termion::screen::*;
 use crate::commands::nsq::api::*;
 use crate::commands::CliError;
 
+lazy_static! {
+    static ref TOPIC_URLS: Mutex<Vec<TopicUrlElement>> = Mutex::new(Vec::new());
+}
+
+struct TopicUrlElement {
+    name: String,
+    urls: Vec<String>,
+}
+
 pub fn do_status_command(matches: &ArgMatches) -> Result<(), CliError> {
     let topics = matches
         .values_of("TOPIC")
@@ -22,34 +31,48 @@ pub fn do_status_command(matches: &ArgMatches) -> Result<(), CliError> {
     let nsq_lookup_port = matches.value_of("nsq_lookup_port").unwrap();
 
     let count = matches.value_of("count").map(|x| x.parse::<u32>().unwrap());
+    let mut delay = matches
+        .value_of("delay")
+        .map(|x| x.parse::<i64>().unwrap())
+        .unwrap();
+
+    if delay < 1 {
+        warn!("Delay was less than 1, defaulting to 1");
+        delay = 1;
+    }
 
     let nsq_lookup = format!("{}:{}", nsq_lookup_host, nsq_lookup_port);
 
-    let mut topic_urls: Vec<(String, Vec<String>)> = Vec::new();
     for topic in topics {
         let base_urls = super::api::get_base_url_for_topic(&nsq_lookup, &topic);
         if base_urls.is_empty() {
             return Err(CliError::new("Unable to get NSQ Host", 2));
         }
 
-        topic_urls.push((s!(topic), base_urls));
+        TOPIC_URLS.lock().unwrap().push(TopicUrlElement {
+            name: s!(topic),
+            urls: base_urls,
+        });
     }
 
     let mut screen = AlternateScreen::from(stdout());
     let mut counter = 0;
     let mut last_data = None;
+    let mut buffer_size: i32 = -1;
 
     loop {
-        write!(
-            screen,
-            "{}{}",
-            termion::clear::All,
-            termion::cursor::Goto(1, 1)
-        )
-        .unwrap();
-        let calculated = check_data(&topic_urls, last_data, &mut screen);
+        let calculated = find_data();
+        if buffer_size > 0 {
+            write!(
+                screen,
+                "{}",
+                termion::cursor::Up(buffer_size as u16),
+            )
+            .unwrap();
+        }
+        buffer_size = print_report(&calculated, last_data, &mut screen) as i32;
 
-        let diff = chrono::Duration::seconds(1) - (Local::now() - calculated.poll_time());
+        let diff = chrono::Duration::seconds(delay) - (Local::now() - calculated.poll_time());
         last_data = Some(calculated);
         let sleep_time = if diff < chrono::Duration::zero() {
             time::Duration::from_micros(0)
@@ -73,50 +96,86 @@ pub fn do_status_command(matches: &ArgMatches) -> Result<(), CliError> {
     Ok(())
 }
 
-fn check_data(
-    topic_url_list: &Vec<(String, Vec<String>)>,
-    last_data: Option<NsqStats>,
-    screen: &mut AlternateScreen<Stdout>,
-) -> NsqStats {
-    let stats = NsqStats::new();
-    for (topic_name, base_urls) in topic_url_list.iter() {
-        for base_url in base_urls {
-            let data = super::api::get_topic_status(base_url, topic_name);
-            stats.register(base_url, data)
+fn find_data() -> NsqStats {
+    let mut stats = NsqStats::new();
+
+    for topic in TOPIC_URLS.lock().unwrap().iter() {
+        for base_url in topic.urls.iter() {
+            let data = super::api::get_topic_status(&base_url, &topic.name);
+            stats.register(&base_url, data)
         }
-    }
-    info!("Polled at {}", s!(stats.poll_time).bold());
-
-    for (topic_name, host_table) in make_host_table(&stats, last_data) {
-        writeln!(screen, "\n# {}", topic_name.bold()).unwrap();
-        host_table.print(screen).unwrap();
-
-        writeln!(screen, "").unwrap();
-        make_channel_table(&stats, &topic_name)
-            .print(screen)
-            .unwrap();
     }
 
     stats
 }
 
-fn make_channel_table(stats: &NsqStats, topic: &str) -> Table {
-    let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-    table.set_titles(row!["Channel Name", "Depth", "In Flight ✈️"]);
+fn print_report(
+    current: &NsqStats,
+    last_data: Option<NsqStats>,
+    screen: &mut AlternateScreen<Stdout>,
+) -> usize {
+    let mut buffer: Vec<u8> = Vec::new();
 
-    for (channel_name, channel) in stats
-        .topics
-        .borrow()
-        .get(topic)
-        .unwrap()
-        .channels
-        .borrow()
-        .iter()
-    {
+    writeln!(buffer, "Polled at {}", s!(current.poll_time).bold()).unwrap();
+
+    for (topic_name, host_table) in make_host_table(&current, &last_data) {
+        writeln!(buffer, "\n📇 {}", topic_name.bold()).unwrap();
+
+        host_table.print(&mut buffer).unwrap();
+
+        writeln!(buffer, "").unwrap();
+        make_channel_table(&current, &topic_name, &last_data)
+            .print(&mut buffer)
+            .unwrap();
+    }
+
+    let mut lines: usize = 0;
+    let line_buffer = buffer.split(|x| x == &('\n' as u8));
+    for line in line_buffer {
+        lines += 1;
+        writeln!(
+            screen,
+            "{}{}",
+            String::from_utf8(line.to_vec()).unwrap(),
+            termion::clear::UntilNewline
+        )
+        .unwrap();
+    }
+
+    lines
+}
+
+fn make_channel_table(stats: &NsqStats, topic: &str, last: &Option<NsqStats>) -> Table {
+    let mut table = Table::new();
+
+    table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+    table.set_titles(row![
+        "Channel Name",
+        "Queue Depth",
+        "Queue Depth Change",
+        "In Flight ✈️"
+    ]);
+
+    for (channel_name, channel) in stats.topics.get(topic).unwrap().channels.iter() {
+        let change = match last {
+            Some(last_stats) => match last_stats.get_channel(topic, channel_name) {
+                Some(last_channel_stats) => {
+                    let difference = (last_channel_stats.depth - channel.depth) as f64;
+                    let mps = difference
+                        / (last_stats.poll_time - stats.poll_time).num_milliseconds() as f64;
+                    let mps = mps * 1000 as f64;
+
+                    format!("{} ({:.2} m/s)", difference, mps)
+                }
+                None => s!("0"),
+            },
+            None => s!("0"),
+        };
+
         table.add_row(row![
             channel_name.bold(),
             s!(channel.depth).bold(),
+            change.bold(),
             s!(channel.in_flight_count).bold()
         ]);
     }
@@ -124,15 +183,15 @@ fn make_channel_table(stats: &NsqStats, topic: &str) -> Table {
     table
 }
 
-fn make_host_table(current: &NsqStats, last: Option<NsqStats>) -> BTreeMap<String, Table> {
+fn make_host_table(current: &NsqStats, last: &Option<NsqStats>) -> BTreeMap<String, Table> {
     let mut hosts_table: BTreeMap<String, Table> = BTreeMap::new();
 
-    for (topic_name, details) in current.topics.borrow().iter() {
+    for (topic_name, details) in current.topics.iter() {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
         table.set_titles(row!["Host Name", "Depth", "Message Count"]);
 
-        let hosts = details.hosts.borrow();
+        let hosts = &details.hosts;
         for (host_name, host_details) in hosts.iter() {
             table.add_row(row![
                 host_name.bold(),
@@ -148,7 +207,7 @@ fn make_host_table(current: &NsqStats, last: Option<NsqStats>) -> BTreeMap<Strin
         ]);
 
         if let Some(ref previous_stats) = last {
-            if let Some(last_topic_stats) = previous_stats.topics.borrow().get(topic_name) {
+            if let Some(last_topic_stats) = previous_stats.topics.get(topic_name) {
                 table.add_row(row![
                     "Change",
                     "",
@@ -159,7 +218,7 @@ fn make_host_table(current: &NsqStats, last: Option<NsqStats>) -> BTreeMap<Strin
                 let mps =
                     mps / (previous_stats.poll_time - current.poll_time).num_milliseconds() as f64;
                 let mps = mps * 1000 as f64;
-                table.add_row(row!["Rate", "", format!("{:.4} m/s", mps)]);
+                table.add_row(row!["Rate", "", format!("{:.2} m/s", mps)]);
             }
         }
 
@@ -169,6 +228,7 @@ fn make_host_table(current: &NsqStats, last: Option<NsqStats>) -> BTreeMap<Strin
     hosts_table
 }
 
+#[derive(Debug, Clone)]
 struct ChannelMetrics {
     depth: i32,
     in_flight_count: i32,
@@ -181,14 +241,16 @@ impl ChannelMetrics {
     }
 }
 
+#[derive(Debug, Clone)]
 struct TopicMetrics {
     depth: i32,
     message_count: i32,
 }
 
+#[derive(Debug, Clone)]
 struct TopicStats {
-    channels: RefCell<BTreeMap<String, ChannelMetrics>>,
-    hosts: RefCell<BTreeMap<String, TopicMetrics>>,
+    channels: BTreeMap<String, ChannelMetrics>,
+    hosts: BTreeMap<String, TopicMetrics>,
     total_depth: i32,
     total_message_count: i32,
 }
@@ -196,8 +258,8 @@ struct TopicStats {
 impl TopicStats {
     fn new() -> Self {
         return TopicStats {
-            channels: RefCell::new(BTreeMap::new()),
-            hosts: RefCell::new(BTreeMap::new()),
+            channels: BTreeMap::new(),
+            hosts: BTreeMap::new(),
             total_depth: 0,
             total_message_count: 0,
         };
@@ -208,14 +270,14 @@ impl TopicStats {
             depth: details.depth,
             message_count: details.message_count,
         };
-        self.hosts.borrow_mut().insert(host, topic_metrics);
+        self.hosts.insert(host, topic_metrics);
 
         self.total_depth += details.depth;
         self.total_message_count += details.message_count;
 
         for channel in details.channels {
-            if !self.channels.borrow().contains_key(&channel.channel_name) {
-                self.channels.borrow_mut().insert(
+            if !self.channels.contains_key(&channel.channel_name) {
+                self.channels.insert(
                     channel.channel_name.clone(),
                     ChannelMetrics {
                         depth: 0,
@@ -224,8 +286,7 @@ impl TopicStats {
                 );
             }
 
-            let mut channels = self.channels.borrow_mut();
-            let channel_value = channels.get_mut(&channel.channel_name).unwrap();
+            let channel_value = self.channels.get_mut(&channel.channel_name).unwrap();
             channel_value.update(channel.depth, channel.in_flight_count);
         }
     }
@@ -233,14 +294,14 @@ impl TopicStats {
 
 struct NsqStats {
     poll_time: DateTime<Local>,
-    topics: RefCell<BTreeMap<String, TopicStats>>,
+    topics: BTreeMap<String, TopicStats>,
 }
 
 impl NsqStats {
     fn new() -> Self {
         return NsqStats {
             poll_time: Local::now(),
-            topics: RefCell::new(BTreeMap::new()),
+            topics: BTreeMap::new(),
         };
     }
 
@@ -248,7 +309,13 @@ impl NsqStats {
         self.poll_time.clone()
     }
 
-    fn register(&self, url: &str, details: Option<StatusTopicsDetails>) {
+    fn get_channel(&self, topic_name: &str, channel_name: &str) -> Option<&ChannelMetrics> {
+        self.topics
+            .get(topic_name)
+            .and_then(|x| x.channels.get(channel_name))
+    }
+
+    fn register(&mut self, url: &str, details: Option<StatusTopicsDetails>) {
         let host = url::Url::parse(url).unwrap().host().unwrap().to_string();
         let details = match details {
             None => {
@@ -259,14 +326,12 @@ impl NsqStats {
         };
 
         for topic in details.topics {
-            if !self.topics.borrow().contains_key(&topic.topic_name) {
+            if !self.topics.contains_key(&topic.topic_name) {
                 self.topics
-                    .borrow_mut()
                     .insert(topic.topic_name.clone(), TopicStats::new());
             }
 
             self.topics
-                .borrow_mut()
                 .get_mut(&topic.topic_name)
                 .unwrap()
                 .update(host.clone(), topic);

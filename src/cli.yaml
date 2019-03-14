@@ -107,6 +107,11 @@ subcommands:
                     long: lookupd-port
                     takes_value: true
                     default_value: "4161"
+                - delay:
+                    help: Ideally, how long between checks to NSQ, in seconds.
+                    long: delay
+                    takes_value: true
+                    default_value: "1"
                 - TOPIC:
                     help: Which topic should be check on
                     required: true

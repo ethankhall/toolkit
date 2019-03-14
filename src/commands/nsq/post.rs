@@ -193,7 +193,7 @@ fn check_api_status(base_url: &str, topic: &str) {
             let in_flight = std::cmp::max(1, in_flight) as usize;
             API_IN_FLIGHT.store(in_flight, Ordering::SeqCst);
             API_DEPTH.store(max_depth, Ordering::SeqCst);
-            std::thread::sleep(Duration::from_millis(500));
+            std::thread::sleep(Duration::from_millis(200));
         }
     }
 }

@@ -192,8 +192,8 @@ fn check_api_status(base_url: &str, topic: &str) {
         }
 
         if let Some((max_depth, in_flight)) = super::api::get_queue_size(base_url, topic) {
-            let max_depth = std::cmp::max(1, max_depth) as usize;
-            let in_flight = std::cmp::max(1, in_flight) as usize;
+            let max_depth = std::cmp::max(0, max_depth) as usize;
+            let in_flight = std::cmp::max(0, in_flight) as usize;
             API_IN_FLIGHT.store(in_flight, Ordering::SeqCst);
             API_DEPTH.store(max_depth, Ordering::SeqCst);
             std::thread::sleep(Duration::from_millis(200));

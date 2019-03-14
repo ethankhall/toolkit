@@ -45,6 +45,7 @@ impl NsqOptions {
             .unwrap_or_else(|| RATE_LIMIT)
             .parse::<usize>()
             .unwrap();
+
         let offset = matches
             .value_of("offset")
             .map(|x| x.parse::<usize>().unwrap())
@@ -58,6 +59,8 @@ impl NsqOptions {
         if limit > number_of_lines {
             limit = number_of_lines;
         }
+
+        info!("Processing {}", file_name);
 
         NsqOptions {
             offset,

@@ -82,7 +82,6 @@ subcommands:
             help: Path to file to process
             takes_value: true
             required: true
-            multiple: true
   - nsq:
       about: Nifty NSQ tools
       settings:
@@ -180,6 +179,11 @@ subcommands:
                     help: File to write output to
                     required: true
                     takes_value: true
+                - INPUT:
+                    help: Path to file to process
+                    takes_value: true
+                    required: true
+                    multiple: true
 
 groups:
   - logging:

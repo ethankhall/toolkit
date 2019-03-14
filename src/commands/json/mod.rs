@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::prelude::*;
-use std::io::{self, BufRead, LineWriter};
+use std::io::{BufRead, BufReader, LineWriter};
 use std::path::PathBuf;
 
 use clap::ArgMatches;
@@ -41,7 +41,7 @@ fn build_key(keys: &Vec<Vec<String>>, json_input: &JsonValue) -> Option<String> 
 
     for part in keys {
         if let Some(key) = find_field(part, json_input) {
-            key_list.push(s!(key.as_str().unwrap()));
+            key_list.push(s!(key.as_str().unwrap_or("null")));
         }
     }
 
@@ -68,57 +68,69 @@ pub fn do_json_latest_command(args: &ArgMatches) -> Result<(), CliError> {
     let file = File::create(output_path).unwrap();
     let mut file = LineWriter::new(file);
 
-    let spinner_style = ProgressStyle::default_spinner()
-        .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ")
-        .template("{prefix:.bold.dim} {spinner} {wide_msg}");
+    let spinner_style =
+        ProgressStyle::default_spinner().template("{prefix:.bold.dim} {spinner:.green} {wide_msg}");
     let progress_bar = ProgressBar::new_spinner();
     progress_bar.set_style(spinner_style.clone());
+    progress_bar.enable_steady_tick(100);
 
     let mut records: BTreeMap<String, Record> = BTreeMap::new();
 
+    let input_paths: Vec<String> = args.values_of("INPUT").unwrap().map(|x| s!(x)).collect();
+
     let mut counter = 0;
-    for line in io::stdin().lock().lines() {
-        match line {
-            Ok(line) => {
-                counter += 1;
-                if counter % 10 == 0 {
-                    progress_bar.set_message(&format!(
-                        "Reading line {}\t Used: {}",
-                        counter,
-                        records.len()
-                    ));
-                }
-
-                let json_line = json::parse(&line).unwrap();
-
-                let id = match build_key(&id_fields, &json_line) {
-                    Some(value) => value,
-                    None => {
-                        warn!("Skipping `{}` because all id was missing.", &line);
-                        continue;
-                    }
-                };
-
-                let version = match find_field(&version_path, &json_line) {
-                    Some(value) => value.as_i32().unwrap(),
-                    None => {
-                        warn!("Skipping `{}` because version was missing.", &line);
-                        continue;
-                    }
-                };
-
-                let record = Record {
-                    id: id.to_string(),
-                    version: version,
-                    data: line,
-                };
-
-                match records.get(&id) {
-                    Some(row) if row.version > version => continue,
-                    _ => records.insert(id.to_string(), record),
-                };
+    for input_path in input_paths.into_iter() {
+        let reader = match crate::commands::file::open_file(&input_path) {
+            Ok(reader) => BufReader::new(reader),
+            Err(e) => {
+                error!("Unable to open {} because {}", input_path, e.to_string());
+                continue;
             }
-            Err(err) => error!("IO error: Line {}: {}", counter, err),
+        };
+
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    counter += 1;
+                    if counter % 10 == 0 {
+                        progress_bar.set_message(&format!(
+                            "Reading line {}\t Used: {}",
+                            counter,
+                            records.len()
+                        ));
+                    }
+
+                    let json_line = json::parse(&line).unwrap();
+
+                    let id = match build_key(&id_fields, &json_line) {
+                        Some(value) => value,
+                        None => {
+                            warn!("Skipping `{}` because all id was missing.", &line);
+                            continue;
+                        }
+                    };
+
+                    let version = match find_field(&version_path, &json_line) {
+                        Some(value) => value.as_i32().unwrap(),
+                        None => {
+                            warn!("Skipping `{}` because version was missing.", &line);
+                            continue;
+                        }
+                    };
+
+                    let record = Record {
+                        id: id.to_string(),
+                        version: version,
+                        data: line,
+                    };
+
+                    match records.get(&id) {
+                        Some(row) if row.version > version => continue,
+                        _ => records.insert(id.to_string(), record),
+                    };
+                }
+                Err(err) => error!("IO error: Line {}: {}", counter, err),
+            }
         }
     }
 

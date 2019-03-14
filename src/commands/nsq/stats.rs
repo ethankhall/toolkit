@@ -63,12 +63,7 @@ pub fn do_status_command(matches: &ArgMatches) -> Result<(), CliError> {
     loop {
         let calculated = find_data();
         if buffer_size > 0 {
-            write!(
-                screen,
-                "{}",
-                termion::cursor::Up(buffer_size as u16),
-            )
-            .unwrap();
+            write!(screen, "{}", termion::cursor::Up(buffer_size as u16),).unwrap();
         }
         buffer_size = print_report(&calculated, last_data, &mut screen) as i32;
 

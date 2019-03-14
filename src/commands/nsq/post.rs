@@ -1,5 +1,4 @@
 use clap::ArgMatches;
-use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -69,9 +68,9 @@ impl NsqOptions {
 }
 
 fn get_number_of_lines(filename: &str) -> usize {
-    let f = File::open(filename).expect("To be able to open file");
-    let file = BufReader::new(&f);
-    file.lines().count() as usize
+    let reader = crate::commands::file::open_file(filename).expect("To be able to open file");
+    let buf_reader = BufReader::new(reader);
+    buf_reader.lines().count() as usize
 }
 
 pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
@@ -115,10 +114,11 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
         }));
     }
 
-    let f = File::open(options.file)?;
-    let file = BufReader::new(&f);
+    let reader = crate::commands::file::open_file(options.file.to_str().unwrap())?;
+    let reader = BufReader::new(reader);
+
     let mut counter = 0;
-    for line in file.lines() {
+    for line in reader.lines() {
         if counter >= options.limit {
             break;
         } else {

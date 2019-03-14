@@ -82,6 +82,7 @@ subcommands:
             help: Path to file to process
             takes_value: true
             required: true
+            multiple: true
   - nsq:
       about: Nifty NSQ tools
       settings:

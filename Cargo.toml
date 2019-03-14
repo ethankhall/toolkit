@@ -27,3 +27,4 @@ kopy-common-lib = { git = "https://github.com/ethankhall/rust-shared.git", rev =
 prettytable-rs = "0.8"
 termion = "*"
 lazy_static = "*"
+flate2 = "1.0"

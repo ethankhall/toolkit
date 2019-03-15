@@ -65,7 +65,10 @@ pub fn do_status_command(matches: &ArgMatches) -> Result<(), CliError> {
         if buffer_size > 0 {
             write!(screen, "{}", termion::cursor::Up(buffer_size as u16),).unwrap();
         }
-        buffer_size = print_report(&calculated, last_data, &mut screen) as i32;
+        let last_buffer_size = print_report(&calculated, last_data, &mut screen) as i32;
+
+        buffer_size = std::cmp::max(buffer_size, last_buffer_size);
+        write!(screen, "{}", termion::clear::AfterCursor).unwrap();
 
         let diff = chrono::Duration::seconds(delay) - (Local::now() - calculated.poll_time());
         last_data = Some(calculated);

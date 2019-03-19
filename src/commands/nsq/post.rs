@@ -1,10 +1,10 @@
-use clap::ArgMatches;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
+use clap::ArgMatches;
 use crossbeam_channel::bounded;
 use crossbeam_channel::Receiver;
 
@@ -29,6 +29,7 @@ struct NsqOptions {
     nsq_lookup: String,
     topic: String,
     file: PathBuf,
+    max_depth: usize,
 }
 
 impl NsqOptions {
@@ -38,6 +39,19 @@ impl NsqOptions {
 
         let nsq_lookup_host = matches.value_of("nsq_lookup_host").unwrap();
         let nsq_lookup_port = matches.value_of("nsq_lookup_port").unwrap();
+
+        let max_depth = matches
+            .value_of("max_depth")
+            .map(|x| x.parse::<i32>().unwrap())
+            .unwrap_or_else(|| 0);
+
+        let max_depth = if max_depth > 1000 {
+            1000
+        } else if max_depth < 0 {
+            1
+        } else {
+            max_depth as usize
+        };
 
         let number_of_lines = get_number_of_lines(file_name);
         let rate = matches
@@ -69,6 +83,7 @@ impl NsqOptions {
             nsq_lookup: format!("{}:{}", nsq_lookup_host, nsq_lookup_port),
             topic: s!(dest_topic),
             file: PathBuf::from(file_name),
+            max_depth,
         }
     }
 }
@@ -106,12 +121,13 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
         .progress_chars("##-");
     let progress_bar = ProgressBar::new(options.limit as u64);
     progress_bar.set_style(style.clone());
+    progress_bar.enable_steady_tick(1000);
 
     let (s1, r1) = bounded(20);
 
     let mut threads = Vec::new();
 
-    for _ in 0..10 {
+    for _ in 0..5 {
         let reciever = r1.clone();
         let url = submit_url.clone();
         let mut limiter = handle.clone();
@@ -121,6 +137,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
     }
 
     let topic = format!("{}", options.topic);
+    do_api_check(&base_url, &topic);
     threads.push(thread::spawn(move || check_api_status(&base_url, &topic)));
 
     let reader = crate::commands::file::open_file(options.file.to_str().unwrap())?;
@@ -128,6 +145,25 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
 
     let mut counter = 0;
     for line in reader.lines() {
+        if counter % 10 == 0 {
+            loop {
+                let max_depth = API_DEPTH.load(Ordering::SeqCst);
+                let in_flight = API_IN_FLIGHT.load(Ordering::SeqCst);
+                progress_bar.set_message(&format!(
+                    "In Progress: {:4}\tBacklog Size: {:4}\tOffset: {}",
+                    in_flight,
+                    max_depth,
+                    OFFSET.load(Ordering::SeqCst)
+                ));
+
+                if max_depth < options.max_depth {
+                    break;
+                } else {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            }
+        }
+
         if counter >= options.limit {
             break;
         } else {
@@ -143,24 +179,6 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
 
         if s1.send(line.unwrap()).is_err() {
             ERRORS.fetch_add(1, Ordering::SeqCst);
-        }
-
-        if counter % 100 == 0 {
-            loop {
-                let max_depth = API_DEPTH.load(Ordering::SeqCst);
-                let in_flight = API_IN_FLIGHT.load(Ordering::SeqCst);
-                progress_bar.set_message(&format!(
-                    "In Progress: {:4}\tBacklog Size: {:4}\tOffset: {}",
-                    in_flight,
-                    max_depth,
-                    OFFSET.load(Ordering::SeqCst)
-                ));
-                if max_depth < 100 {
-                    break;
-                } else {
-                    std::thread::sleep(Duration::from_millis(100));
-                }
-            }
         }
     }
     progress_bar.finish();
@@ -191,13 +209,17 @@ fn check_api_status(base_url: &str, topic: &str) {
             return;
         }
 
-        if let Some((max_depth, in_flight)) = super::api::get_queue_size(base_url, topic) {
-            let max_depth = std::cmp::max(0, max_depth) as usize;
-            let in_flight = std::cmp::max(0, in_flight) as usize;
-            API_IN_FLIGHT.store(in_flight, Ordering::SeqCst);
-            API_DEPTH.store(max_depth, Ordering::SeqCst);
-            std::thread::sleep(Duration::from_millis(200));
-        }
+        do_api_check(base_url, topic);
+    }
+}
+
+fn do_api_check(base_url: &str, topic: &str) {
+    if let Some((max_depth, in_flight)) = super::api::get_queue_size(base_url, topic) {
+        let max_depth = std::cmp::max(0, max_depth) as usize;
+        let in_flight = std::cmp::max(0, in_flight) as usize;
+        API_IN_FLIGHT.store(in_flight, Ordering::SeqCst);
+        API_DEPTH.store(max_depth, Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(200));
     }
 }
 

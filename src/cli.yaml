@@ -145,6 +145,11 @@ subcommands:
                     long: lookupd-port
                     takes_value: true
                     default_value: "4161"
+                - max_depth:
+                    help: How many messages should be in the backlog before pausing sending. Max size 1000.
+                    long: max-depth
+                    takes_value: true
+                    default_value: "100"
                 - TOPIC:
                     help: Which topic should be posted to
                     required: true

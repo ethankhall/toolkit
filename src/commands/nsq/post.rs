@@ -25,7 +25,7 @@ static API_DEPTH: AtomicUsize = AtomicUsize::new(0);
 struct NsqOptions {
     offset: usize,
     limit: usize,
-    rate: usize,
+    rate: f64,
     nsq_lookup: String,
     topic: String,
     file: PathBuf,
@@ -54,10 +54,10 @@ impl NsqOptions {
         };
 
         let number_of_lines = get_number_of_lines(file_name);
-        let rate = matches
+        let raw_rate = matches
             .value_of("rate")
             .unwrap_or_else(|| RATE_LIMIT)
-            .parse::<usize>()
+            .parse::<f64>()
             .unwrap();
 
         let offset = matches
@@ -79,7 +79,7 @@ impl NsqOptions {
         NsqOptions {
             offset,
             limit,
-            rate,
+            rate: raw_rate,
             nsq_lookup: format!("{}:{}", nsq_lookup_host, nsq_lookup_port),
             topic: s!(dest_topic),
             file: PathBuf::from(file_name),
@@ -97,15 +97,25 @@ fn get_number_of_lines(filename: &str) -> usize {
 pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
     let options = NsqOptions::new(args);
 
+    let (capacity, interval) = if options.rate < 1.0 {
+        let dur = Duration::from_secs((1.0 / options.rate) as u64);
+        (1 as u32, dur)
+    } else {
+        (
+            options.rate as u32,
+            Duration::new(1, 0) / options.rate as u32,
+        )
+    };
+
+    debug!("Capacity of in messages: {}", capacity);
+    debug!("Interval of new tokens: {:?}", interval);
+
     let mut ratelimit = ratelimit::Builder::new()
-        .capacity(options.rate as u32) //number of tokens the bucket will hold
-        .frequency(options.rate as u32) //add rate / second
+        .capacity(capacity) //number of tokens the bucket will hold
+        .interval(interval) //add rate / second
         .build();
 
     THREADS_RUNNING.store(true, Ordering::SeqCst);
-
-    let handle = ratelimit.make_handle();
-    thread::spawn(move || ratelimit.run());
 
     let urls = super::api::get_base_url_for_topic(&options.nsq_lookup, &options.topic);
     let base_url = if urls.is_empty() {
@@ -130,9 +140,8 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
     for _ in 0..5 {
         let reciever = r1.clone();
         let url = submit_url.clone();
-        let mut limiter = handle.clone();
         threads.push(thread::spawn(move || {
-            process_messages(reciever, url, &mut limiter);
+            process_messages(reciever, url);
         }));
     }
 
@@ -145,22 +154,20 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
 
     let mut counter = 0;
     for line in reader.lines() {
-        if counter % 10 == 0 {
-            loop {
-                let max_depth = API_DEPTH.load(Ordering::SeqCst);
-                let in_flight = API_IN_FLIGHT.load(Ordering::SeqCst);
-                progress_bar.set_message(&format!(
-                    "In Progress: {:4}\tBacklog Size: {:4}\tOffset: {}",
-                    in_flight,
-                    max_depth,
-                    OFFSET.load(Ordering::SeqCst)
-                ));
+        loop {
+            let max_depth = API_DEPTH.load(Ordering::SeqCst);
+            let in_flight = API_IN_FLIGHT.load(Ordering::SeqCst);
+            progress_bar.set_message(&format!(
+                "In Progress: {:4}\tBacklog Size: {:4}\tOffset: {}",
+                in_flight,
+                max_depth,
+                OFFSET.load(Ordering::SeqCst)
+            ));
 
-                if max_depth < options.max_depth {
-                    break;
-                } else {
-                    std::thread::sleep(Duration::from_millis(100));
-                }
+            if max_depth < options.max_depth {
+                break;
+            } else {
+                std::thread::sleep(Duration::from_millis(100));
             }
         }
 
@@ -170,6 +177,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
             counter += 1;
         }
 
+        ratelimit.wait();
         progress_bar.inc(1);
 
         if options.offset > counter {
@@ -223,7 +231,7 @@ fn do_api_check(base_url: &str, topic: &str) {
     }
 }
 
-fn process_messages(reciever: Receiver<String>, path: String, ratelimit: &mut ratelimit::Handle) {
+fn process_messages(reciever: Receiver<String>, path: String) {
     let client = reqwest::Client::new();
     loop {
         match reciever.recv_timeout(Duration::from_millis(100)) {
@@ -231,9 +239,9 @@ fn process_messages(reciever: Receiver<String>, path: String, ratelimit: &mut ra
                 if !THREADS_RUNNING.load(Ordering::SeqCst) {
                     return;
                 }
+                thread::sleep(Duration::from_millis(500));
             }
             Ok(string) => {
-                ratelimit.wait();
                 let request = client.post(&path.clone()).body(string).build().unwrap();
                 let res = client.execute(request);
                 if res.is_err() {

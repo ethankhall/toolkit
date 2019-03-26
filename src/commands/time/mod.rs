@@ -22,7 +22,7 @@ static DATETIME_FORMATS: &'static [&str] =
     &["%c", "%+", "%Y-%m-%dT%H:%M:%S%:z", "%a %b %d %H:%M:%S %Y"];
 
 static EXPORT_FORMAT: &'static [(&str, &str, Option<Tz>)] = &[
-    ("Standard Format in UTC", "%c", None),
+    ("Human Readable Format", "%c", None),
     ("Standard Format with Tz", "%+", None),
     ("UNIX EPOCH", "%s", None),
     ("UNIX EPOCH (ms)", "%s%3f", None),

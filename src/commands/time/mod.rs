@@ -1,6 +1,8 @@
 use std::slice::SliceConcatExt;
 use std::str::FromStr;
 
+mod parse;
+
 use clap::ArgMatches;
 
 use chrono::prelude::*;

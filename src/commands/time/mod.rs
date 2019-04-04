@@ -48,7 +48,7 @@ fn render_full_output(input: TimeResult) -> Result<(), CliError> {
         first = false;
 
         println!("Understood the date was {}", format!("{}", datetime).bold());
-        println!("  ├── Date 'human'': {}", format!("{}", datetime.format("%b %e %T %Y")).bold());
+        println!("  ├── Date 'human': {}", format!("{}", datetime.format("%b %e %T %Y")).bold());
         println!("  ├── Date in M/D/Y: {}", format!("{}/{}/{}", datetime.month(), datetime.day(), datetime.year()).bold());
         println!("  ├── Date in YMD: {}", format!("{}{:02}{:02}", datetime.year(), datetime.month(), datetime.day()).bold());
         println!("  ├── Day in year: {}", format!("{}", datetime.ordinal()).bold());

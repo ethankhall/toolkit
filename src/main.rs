@@ -1,4 +1,5 @@
 #![feature(slice_concat_ext)]
+#![feature(vec_remove_item)]
 
 extern crate chrono;
 extern crate chrono_tz;

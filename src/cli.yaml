@@ -41,6 +41,8 @@ subcommands:
             help: Input to be parsed, will be merged into a single string
             takes_value: true
             multiple: true
+            required: true
+            allow_hyphen_values: true
   - har:
       about: Har...dy up those the matches!
       long_about: Take a Har file, apply some filtering, then output a new Har file

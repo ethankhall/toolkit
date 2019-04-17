@@ -13,6 +13,11 @@ lazy_static! {
     static ref TIME_ZONE: Regex = Regex::new(r"(?P<zone>[\+-]\d{2}(:?\d{2})?)").unwrap();
 }
 
+const SECONDS_MAX: u64 = 10_000_000_000;
+const MILLI_PER_SEC: u64 = 1_000;
+const NANO_PER_SEC: u64 = 1_000_000_000;
+const MILLI_PER_NANO: u64 = 1_000_000;
+
 #[derive(Debug, PartialEq)]
 pub struct StringTime {
     dates: Vec<CalendarDate>,
@@ -27,7 +32,7 @@ impl StringTime {
 
     pub fn to_utc_date_time(&self) -> DateTime<chrono::Utc> {
         use chrono::{Utc, Local};
-        use chrono::naive::{NaiveDate, NaiveTime};
+        use chrono::naive::NaiveTime;
 
         let date = self.dates.get(0)
             .map(|x| NaiveDate::from_ymd(x.year as i32, x.month, x.day))
@@ -48,7 +53,7 @@ impl StringTime {
 
     pub fn make_permutations(&self) -> Vec<DateTime<FixedOffset>> {
         use chrono::{Local, Date};
-        use chrono::naive::{NaiveDate, NaiveTime};
+        use chrono::naive::NaiveTime;
 
         let time = self.time.clone()
             .map(|x| NaiveTime::from_hms_nano(x.hour, x.min, x.second, x.nano as u32))
@@ -81,9 +86,8 @@ pub enum TimeResult {
 
 #[derive(Debug, PartialEq)]
 pub enum EpochTime {
-    Seconds(u128),
-    Milliseconds(u128),
-    Nanoseconds(u128)
+    Seconds(u64),
+    Nanoseconds(u64, u64)
 }
 
 impl EpochTime {
@@ -92,8 +96,7 @@ impl EpochTime {
 
         let date = match self {
             EpochTime::Seconds(s) => NaiveDateTime::from_timestamp(*s as i64, 0),
-            EpochTime::Milliseconds(s) => NaiveDateTime::from_timestamp(*s as i64 / 1000, ((*s % 1000) * 1000) as u32),
-            EpochTime::Nanoseconds(s) => NaiveDateTime::from_timestamp(*s as i64 / 100_000, (*s % 100_000) as u32)
+            EpochTime::Nanoseconds(sec, nano) => NaiveDateTime::from_timestamp(*sec as i64, *nano as u32)
         };
 
         DateTime::from_utc(date, Utc)
@@ -135,7 +138,7 @@ pub fn parse(input: &str) -> Result<TimeResult, String> {
     use chrono::Local;
 
     let mut input = s!(input);
-    if let Ok(value) = input.parse::<u128>() {
+    if let Ok(value) = input.parse::<u64>() {
         return parse_number(value);
     }
 
@@ -279,13 +282,17 @@ impl StringTime {
     }
 }
 
-fn parse_number(input: u128) -> Result<TimeResult, String> {
-    return if input < 2u128.pow(31) - 1 {
+fn parse_number(input: u64) -> Result<TimeResult, String> {
+    return if input < SECONDS_MAX {
         Ok(TimeResult::Epoch(EpochTime::Seconds(input)))
-    } else if input < (2u128.pow(31) - 1) * 1000 {
-        Ok(TimeResult::Epoch(EpochTime::Milliseconds(input)))
-    } else if input < (2u128.pow(31) - 1) * 1_000_000 {
-        Ok(TimeResult::Epoch(EpochTime::Nanoseconds(input)))
+    } else if input < SECONDS_MAX * MILLI_PER_SEC {
+        let seconds = input / MILLI_PER_SEC;
+        let millis = input % MILLI_PER_SEC;
+        Ok(TimeResult::Epoch(EpochTime::Nanoseconds(seconds, millis * MILLI_PER_NANO)))
+    } else if input < SECONDS_MAX * NANO_PER_SEC {
+        let seconds = input / NANO_PER_SEC;
+        let nanos = input % NANO_PER_SEC;
+        Ok(TimeResult::Epoch(EpochTime::Nanoseconds(seconds, nanos)))
     } else {
         Err(format!("Unknown number {}", input))
     }
@@ -348,8 +355,8 @@ fn parse_unwrap(input: &str) -> TimeResult {
 #[test]
 fn parse_epoch_timestamps_samples() {
     assert_eq!(TimeResult::Epoch(EpochTime::Seconds(1554248133)), parse_unwrap("1554248133"));
-    assert_eq!(TimeResult::Epoch(EpochTime::Milliseconds(1554248133358)), parse_unwrap("1554248133358"));
-    assert_eq!(TimeResult::Epoch(EpochTime::Nanoseconds(1554248133358000)), parse_unwrap("1554248133358000"));
+    assert_eq!(TimeResult::Epoch(EpochTime::Nanoseconds(1554248133, 358000000)), parse_unwrap("1554248133358"));
+    assert_eq!(TimeResult::Epoch(EpochTime::Nanoseconds(1555438653, 801529000)), parse_unwrap("1555438653801529000"));
 }
 
 #[test]

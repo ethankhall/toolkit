@@ -1,3 +1,4 @@
+#![recursion_limit = "1024"]
 #![feature(slice_concat_ext)]
 #![feature(vec_remove_item)]
 

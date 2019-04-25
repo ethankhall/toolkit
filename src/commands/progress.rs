@@ -4,9 +4,9 @@ pub struct ProgressBarHelper {
     pb: ProgressBar,
 }
 
-pub enum ProgressBarType {
-    SizedProgressBar(usize, String),
-    UnsizedProgressBar(String),
+pub enum ProgressBarType<'a> {
+    SizedProgressBar(usize, &'a str),
+    UnsizedProgressBar(&'a str),
 }
 
 impl ProgressBarHelper {
@@ -26,6 +26,7 @@ impl ProgressBarHelper {
 
             let spinner_style = ProgressStyle::default_spinner()
                 .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ")
+                .progress_chars("#o-")
                 .template(&template);
             pb.set_style(spinner_style.clone());
             pb.enable_steady_tick(100);
@@ -40,6 +41,10 @@ impl ProgressBarHelper {
 
     pub fn inc(&self) {
         self.pb.inc(1);
+    }
+
+    pub fn set_message(&self, message: &str) {
+        self.pb.set_message(message);
     }
 
     pub fn done(&self) {

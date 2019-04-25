@@ -5,10 +5,10 @@ use std::io::{BufRead, BufReader, LineWriter};
 use std::path::PathBuf;
 
 use clap::ArgMatches;
-use indicatif::{ProgressBar, ProgressStyle};
 use json::JsonValue;
 
 use crate::commands::CliError;
+use crate::commands::progress::*;
 
 #[derive(Debug)]
 struct Record {
@@ -68,11 +68,7 @@ pub fn do_json_latest_command(args: &ArgMatches) -> Result<(), CliError> {
     let file = File::create(output_path).unwrap();
     let mut file = LineWriter::new(file);
 
-    let spinner_style =
-        ProgressStyle::default_spinner().template("{prefix:.bold.dim} {spinner:.green} {wide_msg}");
-    let progress_bar = ProgressBar::new_spinner();
-    progress_bar.set_style(spinner_style.clone());
-    progress_bar.enable_steady_tick(100);
+    let pb = ProgressBarHelper::new(ProgressBarType::UnsizedProgressBar("{prefix:.bold.dim} {spinner:.green} {wide_msg}"));
 
     let mut records: BTreeMap<String, Record> = BTreeMap::new();
 
@@ -93,7 +89,7 @@ pub fn do_json_latest_command(args: &ArgMatches) -> Result<(), CliError> {
                 Ok(line) => {
                     counter += 1;
                     if counter % 10 == 0 {
-                        progress_bar.set_message(&format!(
+                        pb.set_message(&format!(
                             "Reading line {}\t Used: {}",
                             counter,
                             records.len()
@@ -138,7 +134,7 @@ pub fn do_json_latest_command(args: &ArgMatches) -> Result<(), CliError> {
 
     for record in records.values() {
         write_counter += 1;
-        progress_bar.set_message(&format!(
+        pb.set_message(&format!(
             "Writing line {} of {}",
             write_counter,
             records.len()

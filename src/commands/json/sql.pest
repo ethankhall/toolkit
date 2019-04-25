@@ -1,10 +1,10 @@
-json_path = ${ ("." ~ (ASCII_ALPHANUMERIC){1,}){1,} } 
+json_path = ${ ("." ~ (ASCII_ALPHANUMERIC){1,}){1,} | "." } 
 
 bool_expr = { SOI ~ expr ~ EOI }
 expr = { operation ~ source ~ filter? }
 
 operation = { select_operation }
-source = { ^"FROM" ~ ^"json" }
+source = { ^"FROM" ~ json_path }
 filter = { ^"WHERE" ~ json_path ~ comparison ~ value }
 
 result_column = { "*" | json_path }

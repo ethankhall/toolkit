@@ -8,8 +8,7 @@ use clap::ArgMatches;
 use crossbeam_channel::bounded;
 use crossbeam_channel::Receiver;
 
-use indicatif::{ProgressBar, ProgressStyle};
-
+use crate::commands::progress::*;
 use crate::commands::CliError;
 
 const RATE_LIMIT: &str = "200";
@@ -117,21 +116,19 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
 
     THREADS_RUNNING.store(true, Ordering::SeqCst);
 
-    let urls = super::api::get_base_url_for_topic(&options.nsq_lookup, &options.topic);
-    let base_url = if urls.is_empty() {
-        return Err(CliError::new("Unable to get NSQ Host", 2));
-    } else {
-        format!("{}", urls.first().unwrap())
+    let base_url = match super::api::get_base_url_for_topic(&options.nsq_lookup, &options.topic) {
+        Some(host) => {
+            let hosts: Vec<String> = host.urls.into_iter().collect();
+            format!("{}", hosts.first().unwrap())
+        },
+        None => {
+            return Err(CliError::new("Unable to get NSQ Host", 2));
+        }
     };
 
     let submit_url = format!("{}/pub?topic={}", base_url, &options.topic);
 
-    let style = ProgressStyle::default_bar()
-        .template("[{elapsed_precise}] {bar:80.cyan/blue} {pos:>7}/{len:7} {msg}")
-        .progress_chars("##-");
-    let progress_bar = ProgressBar::new(options.limit as u64);
-    progress_bar.set_style(style.clone());
-    progress_bar.enable_steady_tick(1000);
+    let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(options.limit, "[{elapsed_precise}] {bar:80.cyan/blue} {pos:>7}/{len:7} {msg}"));
 
     let (s1, r1) = bounded(20);
 
@@ -157,7 +154,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
         loop {
             let max_depth = API_DEPTH.load(Ordering::SeqCst);
             let in_flight = API_IN_FLIGHT.load(Ordering::SeqCst);
-            progress_bar.set_message(&format!(
+            pb.set_message(&format!(
                 "In Progress: {:4}\tBacklog Size: {:4}\tOffset: {}",
                 in_flight,
                 max_depth,
@@ -178,7 +175,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
         }
 
         ratelimit.wait();
-        progress_bar.inc(1);
+        pb.inc();
 
         if options.offset > counter {
             OFFSET.fetch_add(1, Ordering::SeqCst);
@@ -189,7 +186,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
             ERRORS.fetch_add(1, Ordering::SeqCst);
         }
     }
-    progress_bar.finish();
+    pb.done();
 
     THREADS_RUNNING.store(false, Ordering::SeqCst);
 

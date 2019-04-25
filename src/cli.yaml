@@ -89,7 +89,7 @@ subcommands:
       settings:
         - SubcommandRequiredElseHelp
       subcommands:
-        - status:
+        - topic-stats:
             about: Shows the status of NSQ Topic
             settings:
               - ArgRequiredElseHelp
@@ -114,8 +114,50 @@ subcommands:
                     long: delay
                     takes_value: true
                     default_value: "1"
+                - hide_zero_depth:
+                    help: Hide topic report where backlog is 0
+                    long: hide-zero-depth
+                - hide_hosts:
+                    help: Hide the "host" section of the table
+                    long: hide-host-table
                 - TOPIC:
-                    help: Which topic should be check on
+                    help: Which topic should be check on?
+                    required: true
+                    takes_value: true
+                    multiple: true
+        - host-stats:
+            about: Shows stats by Host
+            settings:
+              - ArgRequiredElseHelp
+            args:
+                - hide_zero_depth:
+                    help: Hide topic report where backlog is 0
+                    long: hide-zero-depth
+                - count:
+                    help: How many times should I report back?
+                    short: c
+                    long: count
+                    takes_value: true
+                - nsq_lookup_host:
+                    help: Host to NSQ Lookup
+                    long: lookupd-host
+                    takes_value: true
+                    required: true
+                - nsq_lookup_port:
+                    help: Port to NSQ Lookup
+                    long: lookupd-port
+                    takes_value: true
+                    default_value: "4161"
+                - delay:
+                    help: Ideally, how long between checks to NSQ, in seconds.
+                    long: delay
+                    takes_value: true
+                    default_value: "10"
+                - hide_hosts:
+                    help: Hide the "host" section of the table
+                    long: hide-host-table
+                - HOSTS:
+                    help: Which hosts should be reported on?
                     required: true
                     takes_value: true
                     multiple: true
@@ -165,6 +207,22 @@ subcommands:
       settings:
             - SubcommandRequiredElseHelp
       subcommands:
+        - sql:
+            about: Filter new-line delemited JSON using a SQL like expression. 
+            settings:
+                - ArgRequiredElseHelp
+                - Hidden
+            args:
+                - EXP:
+                    help: SQL expression
+                    required: true
+                    takes_value: true
+                    last: true
+                - json:
+                    help: Path to file to process
+                    takes_value: true
+                    required: true
+                    long: json
         - latest:
             about: Filter new-line delemited JSON stream to the newest message
             long_about: If a JSON blob has both an ID that's unique, and a timestamp/version field. Filter the stream for the latest ID/version field.

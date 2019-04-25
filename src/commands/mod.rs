@@ -32,3 +32,4 @@ pub mod har;
 pub mod json;
 pub mod nsq;
 pub mod time;
+pub mod progress;

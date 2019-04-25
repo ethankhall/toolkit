@@ -25,6 +25,11 @@ extern crate prettytable;
 extern crate termion;
 #[macro_use]
 extern crate lazy_static;
+extern crate atty;
+#[macro_use]
+extern crate pest;
+#[macro_use]
+extern crate pest_derive;
 
 mod commands;
 

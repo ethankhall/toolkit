@@ -163,6 +163,21 @@ subcommands:
       settings:
             - SubcommandRequiredElseHelp
       subcommands:
+        - filter:
+            about: Filter new-line delemited JSON using a SQL like expression. 
+            settings:
+                - ArgRequiredElseHelp
+            args:
+                - EXP:
+                    help: SQL expression
+                    required: true
+                    takes_value: true
+                - input:
+                    help: Path to file to process
+                    takes_value: true
+                    required: true
+                    multiple: true
+                    long: file
         - latest:
             about: Filter new-line delemited JSON stream to the newest message
             long_about: If a JSON blob has both an ID that's unique, and a timestamp/version field. Filter the stream for the latest ID/version field.

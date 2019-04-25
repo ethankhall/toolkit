@@ -1,3 +1,5 @@
+#![recursion_limit = "1024"]
+
 pub struct CliError {
     message: String,
     pub code: i32,
@@ -32,3 +34,4 @@ pub mod har;
 pub mod json;
 pub mod nsq;
 pub mod time;
+pub mod progress;

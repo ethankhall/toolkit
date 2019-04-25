@@ -1,0 +1,36 @@
+json_path = ${ ("." ~ (ASCII_ALPHANUMERIC){1,}){1,} } 
+
+bool_expr = { SOI ~ expr ~ EOI }
+expr = { operation ~ source ~ filter? }
+
+operation = { select_operation }
+source = { ^"FROM" ~ ^"json" }
+filter = { ^"WHERE" ~ json_path ~ comparison ~ value }
+
+result_column = { "*" | json_path }
+select_operation = { ^"SELECT" ~ result_column ~ ("," ~ result_column )* }
+
+comparison = { eq | neq }
+eq = { "=" }
+neq = { "!=" | "<>"}
+
+value = {
+    string_literal
+    | num_literal
+    | "(" ~ string_literal ~("," ~ string_literal)* ~ ")"
+    | "(" ~ num_literal ~("," ~ num_literal)* ~ ")"
+}
+
+num_literal = @{
+    "-"?
+    ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
+    ~ ("." ~ ASCII_DIGIT*)?
+}
+
+string_literal = ${ "\"" ~ string ~ "\"" }
+string = @{ char* }
+char = {
+    !("\"" | "\\") ~ ANY
+}
+
+WHITESPACE = _{ " " }

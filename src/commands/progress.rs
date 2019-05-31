@@ -26,7 +26,7 @@ impl ProgressBarHelper {
 
             let spinner_style = ProgressStyle::default_spinner()
                 .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ")
-                .progress_chars("#o-")
+                .progress_chars("#>-")
                 .template(&template);
             pb.set_style(spinner_style.clone());
             pb.enable_steady_tick(100);
@@ -34,6 +34,7 @@ impl ProgressBarHelper {
         }
     }
 
+    #[allow(dead_code)]
     pub fn inc_with_message(&self, message: &str) {
         self.pb.inc(1);
         self.pb.set_message(message);

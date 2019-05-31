@@ -2,7 +2,6 @@ use std::fs::File;
 use std::io::Write;
 
 use comrak::{markdown_to_html, ComrakOptions};
-use mime::{Mime, APPLICATION_JSON, APPLICATION_OCTET_STREAM, TEXT_JAVASCRIPT};
 use serde_json;
 
 use super::model::*;
@@ -128,25 +127,16 @@ impl ToMarkdown for HarFile {
                 entry.response.content.mime_type.clone()
             ));
             if let Some(text) = entry.response.content.text {
-                let body = text.replace("\\n", "\n");
-                let mime = entry
-                    .response
-                    .content
-                    .mime_type
-                    .parse::<Mime>()
-                    .unwrap_or(APPLICATION_OCTET_STREAM);
-
                 lines.push("**Body:**".to_string());
-                if mime == APPLICATION_JSON || mime == TEXT_JAVASCRIPT {
-                    match serde_json::from_str::<serde_json::Value>(&body) {
-                        Ok(json) => {
-                            let body = serde_json::to_string_pretty(&json).unwrap();
-                            lines.push(format!("```\n{}\n```\n", body))
-                        }
-                        Err(_) => lines.push(format!("```\n{}\n```\n", body)),
+                match serde_json::from_str::<serde_json::Value>(&text) {
+                    Ok(json) => {
+                        let body = serde_json::to_string_pretty(&json).unwrap();
+                        lines.push(format!("```\n{}\n```\n", body))
                     }
-                } else {
-                    lines.push(format!("```\n{}\n```\n", body))
+                    Err(_) => {
+                        let body = text.replace("\\n", "\n");
+                        lines.push(format!("```\n{}\n```\n", body));
+                    }
                 }
             }
         }

@@ -1,6 +1,7 @@
 #![recursion_limit = "1024"]
 #![feature(slice_concat_ext)]
 #![feature(vec_remove_item)]
+#![feature(async_await)]
 
 extern crate chrono;
 extern crate chrono_tz;
@@ -27,7 +28,6 @@ extern crate termion;
 #[macro_use]
 extern crate lazy_static;
 extern crate atty;
-#[macro_use]
 extern crate pest;
 #[macro_use]
 extern crate pest_derive;
@@ -37,9 +37,9 @@ mod commands;
 use clap::App;
 
 use commands::har::exec::do_har_command;
-use commands::json::do_json_latest_command;
+use commands::json::*;
 use commands::nsq::post::do_send_command;
-use commands::nsq::stats::do_status_command;
+use commands::nsq::stats::{do_topic_status_command, do_host_status_command};
 use commands::time::do_time_command;
 use kopy_common_lib::configure_logging;
 
@@ -60,11 +60,13 @@ fn main() {
         ("har", Some(har_matches)) => do_har_command(har_matches),
         ("json", Some(json_matches)) => match json_matches.subcommand() {
             ("latest", Some(filter_matches)) => do_json_latest_command(filter_matches),
+            ("sql", Some(filter_matches)) => do_json_sql_command(filter_matches),
             _ => unreachable!(),
         },
         ("nsq", Some(nsq_matches)) => match nsq_matches.subcommand() {
             ("send", Some(send_matches)) => do_send_command(send_matches),
-            ("status", Some(send_matches)) => do_status_command(send_matches),
+            ("topic-stats", Some(send_matches)) => do_topic_status_command(send_matches),
+            ("host-stats", Some(send_matches)) => do_host_status_command(send_matches),
             _ => unreachable!(),
         },
         _ => unreachable!(),

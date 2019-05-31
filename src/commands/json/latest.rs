@@ -9,6 +9,7 @@ use json::JsonValue;
 
 use crate::commands::CliError;
 use crate::commands::progress::*;
+use super::{find_field, parse_path};
 
 #[derive(Debug)]
 struct Record {
@@ -22,18 +23,6 @@ fn leading_dot_will_be_ignored() {
     let split: Vec<String> = parse_path(".abc.123");
 
     assert_eq!(2, split.len());
-}
-
-fn parse_path(path: &str) -> Vec<String> {
-    let path = if path.starts_with(".") {
-        path.replacen(".", "", 1)
-    } else {
-        path.to_string()
-    };
-
-    let split: Vec<String> = path.split_terminator(".").map(|x| x.to_string()).collect();
-
-    return split;
 }
 
 fn build_key(keys: &Vec<Vec<String>>, json_input: &JsonValue) -> Option<String> {
@@ -146,17 +135,4 @@ pub fn do_json_latest_command(args: &ArgMatches) -> Result<(), CliError> {
     }
 
     return Ok(());
-}
-
-fn find_field<'a>(field: &Vec<String>, json_input: &'a JsonValue) -> Option<&'a JsonValue> {
-    let mut value = json_input;
-
-    for part in field {
-        value = &value[part];
-        if value.is_null() {
-            return None;
-        }
-    }
-
-    return Some(value);
 }

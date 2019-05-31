@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::io::{stdout, Stdout, Write};
 use std::sync::Mutex;
 use std::{thread, time};
+use futures::executor::block_on;
 
 use chrono::prelude::*;
 use clap::ArgMatches;
@@ -9,52 +10,97 @@ use colored::*;
 use prettytable::{format, Table};
 use termion::screen::*;
 
+use super::TopicUrlElement;
 use crate::commands::nsq::api::*;
 use crate::commands::CliError;
+use crate::commands::progress::*;
 
 lazy_static! {
     static ref TOPIC_URLS: Mutex<Vec<TopicUrlElement>> = Mutex::new(Vec::new());
 }
 
-struct TopicUrlElement {
-    name: String,
-    urls: Vec<String>,
+struct ConfigOptions {
+    nsq_lookup: String,
+    delay: i64,
+    count: Option<u32>,
+    hide_hosts: bool,
+    hide_zero_depth: bool,
 }
 
-pub fn do_status_command(matches: &ArgMatches) -> Result<(), CliError> {
+impl ConfigOptions {
+    fn new(matches: &ArgMatches) -> Self {
+
+        let nsq_lookup_host = matches.value_of("nsq_lookup_host").unwrap();
+        let nsq_lookup_port = matches.value_of("nsq_lookup_port").unwrap();
+
+        let count = matches.value_of("count").map(|x| x.parse::<u32>().unwrap());
+        let mut delay = matches
+            .value_of("delay")
+            .map(|x| x.parse::<i64>().unwrap())
+            .unwrap();
+
+        if delay < 1 {
+            warn!("Delay was less than 1, defaulting to 1");
+            delay = 1;
+        }
+
+        let nsq_lookup = format!("{}:{}", nsq_lookup_host, nsq_lookup_port);
+        let hide_hosts = matches.is_present("hide_hosts");
+        let hide_zero_depth = matches.is_present("hide_zero_depth");
+
+        ConfigOptions {
+            nsq_lookup,
+            delay,
+            count,
+            hide_hosts,
+            hide_zero_depth,
+        }
+    }
+}
+
+pub fn do_host_status_command(matches: &ArgMatches) -> Result<(), CliError> {
+    let hosts = matches
+        .values_of("HOSTS")
+        .map(|x| x.collect())
+        .unwrap_or_else(|| vec![]);
+
+    let config = ConfigOptions::new(matches);
+
+    match super::api::get_base_url_for_hosts(&config.nsq_lookup, &hosts) {
+        Some(mut element) => TOPIC_URLS.lock().unwrap().append(&mut element),
+        None => {
+            return Err(CliError::new("Unable to get NSQ Host", 2));
+        }
+    }
+
+    do_printing(&config);
+
+    return Ok(())
+}
+
+pub fn do_topic_status_command(matches: &ArgMatches) -> Result<(), CliError> {
     let topics = matches
         .values_of("TOPIC")
         .map(|x| x.collect())
         .unwrap_or_else(|| vec![]);
 
-    let nsq_lookup_host = matches.value_of("nsq_lookup_host").unwrap();
-    let nsq_lookup_port = matches.value_of("nsq_lookup_port").unwrap();
-
-    let count = matches.value_of("count").map(|x| x.parse::<u32>().unwrap());
-    let mut delay = matches
-        .value_of("delay")
-        .map(|x| x.parse::<i64>().unwrap())
-        .unwrap();
-
-    if delay < 1 {
-        warn!("Delay was less than 1, defaulting to 1");
-        delay = 1;
-    }
-
-    let nsq_lookup = format!("{}:{}", nsq_lookup_host, nsq_lookup_port);
+    let config = ConfigOptions::new(matches);
 
     for topic in topics {
-        let base_urls = super::api::get_base_url_for_topic(&nsq_lookup, &topic);
-        if base_urls.is_empty() {
-            return Err(CliError::new("Unable to get NSQ Host", 2));
+        match super::api::get_base_url_for_topic(&config.nsq_lookup, &topic) {
+            Some(element) => TOPIC_URLS.lock().unwrap().push(element),
+            None => {
+                return Err(CliError::new("Unable to get NSQ Host", 2));
+            }
         }
-
-        TOPIC_URLS.lock().unwrap().push(TopicUrlElement {
-            name: s!(topic),
-            urls: base_urls,
-        });
     }
 
+    do_printing(&config);
+
+    Ok(())
+}
+
+fn do_printing(config: &ConfigOptions) {
     let mut screen = AlternateScreen::from(stdout());
     let mut counter = 0;
     let mut last_data = None;
@@ -65,12 +111,12 @@ pub fn do_status_command(matches: &ArgMatches) -> Result<(), CliError> {
         if buffer_size > 0 {
             write!(screen, "{}", termion::cursor::Up(buffer_size as u16),).unwrap();
         }
-        let last_buffer_size = print_report(&calculated, last_data, &mut screen) as i32;
+        let last_buffer_size = print_report(&config, &calculated, last_data, &mut screen) as i32;
 
         buffer_size = std::cmp::max(buffer_size, last_buffer_size);
         write!(screen, "{}", termion::clear::AfterCursor).unwrap();
 
-        let diff = chrono::Duration::seconds(delay) - (Local::now() - calculated.poll_time());
+        let diff = chrono::Duration::seconds(config.delay) - (Local::now() - calculated.poll_time());
         last_data = Some(calculated);
         let sleep_time = if diff < chrono::Duration::zero() {
             time::Duration::from_micros(0)
@@ -84,30 +130,43 @@ pub fn do_status_command(matches: &ArgMatches) -> Result<(), CliError> {
         thread::sleep(sleep_time);
         counter += 1;
 
-        if let Some(limit) = count {
+        if let Some(limit) = config.count {
             if counter >= limit {
                 break;
             }
         }
     }
-
-    Ok(())
 }
 
 fn find_data() -> NsqStats {
     let mut stats = NsqStats::new();
 
-    for topic in TOPIC_URLS.lock().unwrap().iter() {
+    let lock = TOPIC_URLS.lock().unwrap();
+    let mut process_queue = Vec::new();
+
+    for topic in lock.iter() {
         for base_url in topic.urls.iter() {
-            let data = super::api::get_topic_status(&base_url, &topic.name);
-            stats.register(&base_url, data)
+            process_queue.push(get_topic_status(&base_url, &topic.name));
         }
+    }
+
+    let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(process_queue.len(), "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} Fetching topics..."));
+
+    for item in process_queue {
+        pb.inc();
+        let (base_url, data) = block_on(item);
+        stats.register(&base_url, data);
     }
 
     stats
 }
 
+async fn get_topic_status<'a>(base_url: &'a str, topic: &'a str) -> (String, Option<StatusTopicsDetails>) {
+    (s!(base_url), super::api::get_topic_status(&base_url, &topic))
+}
+
 fn print_report(
+    config_options: &ConfigOptions,
     current: &NsqStats,
     last_data: Option<NsqStats>,
     screen: &mut AlternateScreen<Stdout>,
@@ -118,13 +177,17 @@ fn print_report(
 
     for (topic_name, host_table) in make_host_table(&current, &last_data) {
         writeln!(buffer, "\n📇 {}", topic_name.bold()).unwrap();
+        
+        if !config_options.hide_hosts {
+            host_table.print(&mut buffer).unwrap();
+        }
 
-        host_table.print(&mut buffer).unwrap();
-
-        writeln!(buffer, "").unwrap();
-        make_channel_table(&current, &topic_name, &last_data)
-            .print(&mut buffer)
-            .unwrap();
+        if let Some(table) = make_channel_table(&config_options, &current, &topic_name, &last_data) {
+            writeln!(buffer, "").unwrap();
+            table
+                .print(&mut buffer)
+                .unwrap();
+        }
     }
 
     let mut lines: usize = 0;
@@ -143,7 +206,7 @@ fn print_report(
     lines
 }
 
-fn make_channel_table(stats: &NsqStats, topic: &str, last: &Option<NsqStats>) -> Table {
+fn make_channel_table(config_options: &ConfigOptions, stats: &NsqStats, topic: &str, last: &Option<NsqStats>) -> Option<Table> {
     let mut table = Table::new();
 
     table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
@@ -154,13 +217,20 @@ fn make_channel_table(stats: &NsqStats, topic: &str, last: &Option<NsqStats>) ->
         "In Flight ✈️"
     ]);
 
+    let mut channel_written = false;
+
     for (channel_name, channel) in stats.topics.get(topic).unwrap().channels.iter() {
+        if channel.depth == 0 && config_options.hide_zero_depth {
+            continue;
+        } else {
+            channel_written = true;
+        }
         let change = match last {
             Some(last_stats) => match last_stats.get_channel(topic, channel_name) {
                 Some(last_channel_stats) => {
-                    let difference = (last_channel_stats.depth - channel.depth) as f64;
+                    let difference = (channel.depth - last_channel_stats.depth) as f64;
                     let mps = difference
-                        / (last_stats.poll_time - stats.poll_time).num_milliseconds() as f64;
+                        / (stats.poll_time - last_stats.poll_time).num_milliseconds() as f64;
                     let mps = mps * 1000 as f64;
 
                     format!("{} ({:.2} m/s)", difference, mps)
@@ -178,7 +248,11 @@ fn make_channel_table(stats: &NsqStats, topic: &str, last: &Option<NsqStats>) ->
         ]);
     }
 
-    table
+    if !channel_written {
+        return None
+    }
+
+    Some(table)
 }
 
 fn make_host_table(current: &NsqStats, last: &Option<NsqStats>) -> BTreeMap<String, Table> {
@@ -206,15 +280,15 @@ fn make_host_table(current: &NsqStats, last: &Option<NsqStats>) -> BTreeMap<Stri
 
         if let Some(ref previous_stats) = last {
             if let Some(last_topic_stats) = previous_stats.topics.get(topic_name) {
+                let change = details.total_message_count as i128 - last_topic_stats.total_message_count as i128;
                 table.add_row(row![
                     "Change",
                     "",
-                    details.total_message_count - last_topic_stats.total_message_count
+                    change
                 ]);
+                let mps = change as f64;
                 let mps =
-                    (last_topic_stats.total_message_count - details.total_message_count) as f64;
-                let mps =
-                    mps / (previous_stats.poll_time - current.poll_time).num_milliseconds() as f64;
+                    mps / (current.poll_time - previous_stats.poll_time).num_milliseconds() as f64;
                 let mps = mps * 1000 as f64;
                 table.add_row(row!["Rate", "", format!("{:.2} m/s", mps)]);
             }
@@ -228,29 +302,29 @@ fn make_host_table(current: &NsqStats, last: &Option<NsqStats>) -> BTreeMap<Stri
 
 #[derive(Debug, Clone)]
 struct ChannelMetrics {
-    depth: i32,
-    in_flight_count: i32,
+    depth: i128,
+    in_flight_count: i128,
 }
 
 impl ChannelMetrics {
-    fn update(&mut self, depth: i32, in_flight_count: i32) {
-        self.depth += depth;
-        self.in_flight_count += in_flight_count;
+    fn update(&mut self, depth: u64, in_flight_count: u64) {
+        self.depth += depth as i128;
+        self.in_flight_count += in_flight_count as i128;
     }
 }
 
 #[derive(Debug, Clone)]
 struct TopicMetrics {
-    depth: i32,
-    message_count: i32,
+    depth: u64,
+    message_count: u64,
 }
 
 #[derive(Debug, Clone)]
 struct TopicStats {
     channels: BTreeMap<String, ChannelMetrics>,
     hosts: BTreeMap<String, TopicMetrics>,
-    total_depth: i32,
-    total_message_count: i32,
+    total_depth: u64,
+    total_message_count: u64,
 }
 
 impl TopicStats {

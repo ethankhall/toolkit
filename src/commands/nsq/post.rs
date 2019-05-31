@@ -116,11 +116,14 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
 
     THREADS_RUNNING.store(true, Ordering::SeqCst);
 
-    let urls = super::api::get_base_url_for_topic(&options.nsq_lookup, &options.topic);
-    let base_url = if urls.is_empty() {
-        return Err(CliError::new("Unable to get NSQ Host", 2));
-    } else {
-        format!("{}", urls.first().unwrap())
+    let base_url = match super::api::get_base_url_for_topic(&options.nsq_lookup, &options.topic) {
+        Some(host) => {
+            let hosts: Vec<String> = host.urls.into_iter().collect();
+            format!("{}", hosts.first().unwrap())
+        },
+        None => {
+            return Err(CliError::new("Unable to get NSQ Host", 2));
+        }
     };
 
     let submit_url = format!("{}/pub?topic={}", base_url, &options.topic);

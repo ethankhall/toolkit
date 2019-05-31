@@ -1,16 +1,25 @@
 json_path = ${ ("." ~ (ASCII_ALPHANUMERIC){1,}){1,} | "." } 
 
 bool_expr = { SOI ~ expr ~ EOI }
-expr = { operation ~ source ~ filter? }
+expr = { operation ~ source ~ filter? ~ (limit ~ offset?)? }
 
-operation = { select_operation }
+operation = _{ select_operation }
 source = { ^"FROM" ~ json_path }
-filter = { ^"WHERE" ~ json_path ~ comparison ~ value }
+filter = { ^"WHERE" ~ condition ~ ( logic ~ condition )* }
+
+logic = { and | or }
+and = { ^"and" }
+or = { ^"or" }
+
+condition = { json_path ~ comparison ~ value }
+
+limit = { ^"LIMIT" ~ pos_num_literal }
+offset = { ^"OFFSET" ~ pos_num_literal }
 
 result_column = { "*" | json_path }
 select_operation = { ^"SELECT" ~ result_column ~ ("," ~ result_column )* }
 
-comparison = { eq | neq }
+comparison = _{ eq | neq }
 eq = { "=" }
 neq = { "!=" | "<>"}
 
@@ -20,6 +29,8 @@ value = {
     | "(" ~ string_literal ~("," ~ string_literal)* ~ ")"
     | "(" ~ num_literal ~("," ~ num_literal)* ~ ")"
 }
+
+pos_num_literal = @{ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) }
 
 num_literal = @{
     "-"?

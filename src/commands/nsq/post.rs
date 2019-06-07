@@ -7,7 +7,9 @@ use std::time::Duration;
 use clap::ArgMatches;
 use crossbeam_channel::bounded;
 use crossbeam_channel::Receiver;
+use futures::executor::block_on;
 
+use crate::commands::nsq::api::*;
 use crate::commands::progress::*;
 use crate::commands::CliError;
 
@@ -106,6 +108,8 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
         )
     };
 
+    let status = block_on(NsqState::new(&options.nsq_lookup, NsqFilter::Topic { topics: vec![options.topic.clone()].into_iter().collect() } ));
+
     debug!("Capacity of in messages: {}", capacity);
     debug!("Interval of new tokens: {:?}", interval);
 
@@ -116,17 +120,15 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
 
     THREADS_RUNNING.store(true, Ordering::SeqCst);
 
-    let base_url = match super::api::get_base_url_for_topic(&options.nsq_lookup, &options.topic) {
-        Some(host) => {
-            let hosts: Vec<String> = host.urls.into_iter().collect();
-            format!("{}", hosts.first().unwrap())
-        },
+    let base_addresss = match status.get_topic_url(&options.topic.clone()) {
+        Some(address) => address,
         None => {
+            error!("NSQ does now know about topic {}", options.topic);
             return Err(CliError::new("Unable to get NSQ Host", 2));
         }
     };
 
-    let submit_url = format!("{}/pub?topic={}", base_url, &options.topic);
+    let submit_url = format!("{}/pub?topic={}", base_addresss, &options.topic);
 
     let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(options.limit, "[{elapsed_precise}] {bar:80.cyan/blue} {pos:>7}/{len:7} {msg}"));
 
@@ -143,8 +145,8 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
     }
 
     let topic = format!("{}", options.topic);
-    do_api_check(&base_url, &topic);
-    threads.push(thread::spawn(move || check_api_status(&base_url, &topic)));
+    do_api_check(&topic, &status);
+    threads.push(thread::spawn(move || check_api_status(&topic, &status)));
 
     let reader = crate::commands::file::open_file(options.file.to_str().unwrap())?;
     let reader = BufReader::new(reader);
@@ -208,24 +210,22 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
     return Ok(());
 }
 
-fn check_api_status(base_url: &str, topic: &str) {
+fn check_api_status(topic: &str, state: &NsqState) {
     loop {
         if !THREADS_RUNNING.load(Ordering::SeqCst) {
             return;
         }
 
-        do_api_check(base_url, topic);
+        do_api_check(topic, state);
+        std::thread::sleep(Duration::from_millis(200));
     }
 }
 
-fn do_api_check(base_url: &str, topic: &str) {
-    if let Some((max_depth, in_flight)) = super::api::get_queue_size(base_url, topic) {
-        let max_depth = std::cmp::max(0, max_depth) as usize;
-        let in_flight = std::cmp::max(0, in_flight) as usize;
-        API_IN_FLIGHT.store(in_flight, Ordering::SeqCst);
-        API_DEPTH.store(max_depth, Ordering::SeqCst);
-        std::thread::sleep(Duration::from_millis(200));
-    }
+fn do_api_check(topic: &str, state: &NsqState) {
+    let snapshot = block_on(state.update_status());
+    let agg = snapshot.topics.get(topic).unwrap().producer_aggregate();
+    let max_depth = std::cmp::max(0, agg.depth) as usize;
+    API_DEPTH.store(max_depth, Ordering::SeqCst);
 }
 
 fn process_messages(reciever: Receiver<String>, path: String) {

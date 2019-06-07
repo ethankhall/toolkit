@@ -1,399 +1,363 @@
-use std::sync::Mutex;
-use std::collections::{HashSet, BTreeMap};
-use std::collections::BTreeSet;
+use std::sync::RwLock;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::commands::progress::*;
-use super::TopicUrlElement;
+use futures::future::{join_all};
+use chrono::prelude::*;
 use url::Url;
 
-#[derive(Serialize, Deserialize)]
-pub struct StatusTopicsResponse {
-    pub data: StatusTopicsDetails,
+use crate::commands::progress::*;
+use super::model::*;
+
+lazy_static! {
+    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder().build().expect("Should be able to make client");
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct StatusTopicsDetails {
-    pub topics: Vec<TopicDetails>,
+fn do_get(url: &str) -> Option<serde_json::Value> {
+    let url = Url::parse(&url).expect("URL to be valid");
+
+    let body = match HTTP_CLIENT.get(url).send() {
+        Err(e) => {
+            error!("Unable to talk to NSQ: {}", e.to_string());
+            return None;
+        }
+        Ok(mut resp) => {
+            if !resp.status().is_success() {
+                error!("NSQ returned with an error: {:#?}", resp.text());
+                return None;
+            } else {
+                resp.text().unwrap()
+            }
+        }
+    };
+
+    match serde_json::from_str(&body) {
+        Ok(value) => Some(value),
+        Err(e) => {
+            error!("JSON Deseralization error: {:?}", e);
+            None
+        }
+    }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct TopicDetails {
+#[derive(Debug, Clone, Serialize)]
+pub enum NsqFilter {
+    Host { hosts: BTreeSet<String> },
+    Topic { topics: BTreeSet<String> },
+    HostAndTopic { hosts: BTreeSet<String>, topics: BTreeSet<String> }
+}
+
+impl NsqFilter {
+    fn include_topic(&self, topic_name: &str) -> bool {
+        match self {
+            NsqFilter::Host { hosts: _ } => true,
+            NsqFilter::HostAndTopic { hosts: _, topics } => topics.iter().any(|topic| topic == topic_name),
+            NsqFilter::Topic { topics } => topics.iter().any(|topic| topic == topic_name),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct NsqState {
+    host_details: BTreeMap<String, HostDetails>,
+    filter: NsqFilter
+}
+
+#[derive(Debug, Serialize)]
+struct HostDetails {
+    hostname: String,
+    status: RwLock<Vec<HostTopicStatus>>,
+    disable_host: bool
+}
+
+
+impl NsqState {
+    pub async fn new(nsq_lookup: &str, filter: NsqFilter) -> Self {
+        let mut host_details: BTreeMap<String, HostDetails> = BTreeMap::new();
+
+        let nodes_response = do_get(&format!("http://{}/nodes", nsq_lookup)).expect("Unable to talk to nsq_lookup");
+        let empty_vec: Vec<serde_json::Value> = vec![];
+        let producers = nodes_response["data"]["producers"].as_array().unwrap_or(&empty_vec);
+
+        for producer in producers {
+            let hostname = producer["hostname"].as_str().unwrap();
+            let port = producer["http_port"].as_u64().unwrap();
+            host_details.entry(s!(hostname)).or_insert_with(|| HostDetails::new(format!("{}:{}", hostname, port)));
+        }
+
+        let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(host_details.len(), "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} Waiting for NSQ nodes to respond"));
+
+        let futures: Vec<_> = host_details.values_mut().map(|x| x.update_status(&pb)).collect();
+        join_all(futures).await;
+
+        host_details.values_mut().for_each(|x| x.initalize(&filter));
+
+        pb.done();
+
+        NsqState {
+            host_details,
+            filter
+        }
+    }
+
+    pub async fn update_status(&self) -> NsqSnapshot {
+
+        let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(self.host_details.len(), "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} Fetching status from NSQ Hosts"));
+
+        let mut futures = Vec::new();
+        for value in self.host_details.values() {
+            futures.push(value.update_status(&pb));
+        }
+
+        join_all(futures).await;
+
+        self.get_status()
+    }
+
+    pub fn get_status(&self) -> NsqSnapshot {
+        let mut snapshot = NsqSnapshot { pull_finished: Local::now(), topics: BTreeMap::new(), producers: BTreeMap::new() };
+
+        for details in self.host_details.values().filter(|x| x.disable_host == false) {
+            for topic_status in details.status.read().unwrap().iter() {
+                let topic_name = topic_status.topic_name.clone();
+                let producer_hostname = details.hostname.clone();
+
+                if self.filter.include_topic(&topic_name) {
+                    let topic_snapshot = snapshot.topics.entry(topic_name.clone()).or_insert_with(|| NsqTopicSnapshot::new(topic_name));
+                    let producer_snapshot = NsqTopicProducerSnapshot::new(producer_hostname.clone(), topic_status.message_count, topic_status.depth);
+                    topic_snapshot.producers.insert(producer_hostname.clone(), producer_snapshot);
+                    for channel in topic_status.channels.iter() {
+                        let channel_name = channel.channel_name.clone();
+                        let channel_snapshot = topic_snapshot.consumers.entry(channel_name.clone()).or_insert_with(|| NsqTopicConsumerSnapshot::new(channel_name));
+                        channel_snapshot.merge(channel);
+                    }
+                }
+
+                for channel in topic_status.channels.iter() {
+                    let producer_agg = snapshot.producers.entry(producer_hostname.clone()).or_insert(NsqTopicProducerAggregate { hostname: producer_hostname.clone(), depth: 0, message_count: 0});
+                    producer_agg.merge(channel);
+                }
+            }
+        }
+
+        snapshot
+    }
+
+    pub fn get_topic_url(&self, topic_name: &str) -> Option<String> {
+        self.host_details.values()
+            .find(|host| host.status.read().unwrap().iter().any(|x| x.topic_name == topic_name))
+            .map(|x| format!("http://{}", x.hostname))
+    }
+}
+
+pub struct NsqSnapshot {
+    pub pull_finished: DateTime<Local>,
+    pub topics: BTreeMap<String, NsqTopicSnapshot>,
+    pub producers: BTreeMap<String, NsqTopicProducerAggregate>,
+}
+
+impl NsqSnapshot {
+    pub fn get_channel(&self, topic: &str, channel_name: &str) -> Option<&NsqTopicConsumerSnapshot> {
+        self.topics.get(topic).and_then(|topic_snapshot| topic_snapshot.consumers.get(channel_name))
+    }
+}
+
+pub struct NsqTopicSnapshot {
+    pub name: String, 
+    pub consumers: BTreeMap<String, NsqTopicConsumerSnapshot>,
+    pub producers: BTreeMap<String, NsqTopicProducerSnapshot>
+}
+
+pub struct NsqTopicProducerAggregate {
+    pub hostname: String,
+    pub depth: u64,
+    pub message_count: u64
+}
+
+impl NsqTopicProducerAggregate {
+    fn merge(&mut self, status: &ChannelStatus) {
+        self.depth += status.depth;
+        self.message_count += status.message_count
+    }
+}
+
+impl NsqTopicSnapshot {
+    fn new(name: String) -> Self {
+        NsqTopicSnapshot { name, consumers: BTreeMap::new(), producers: BTreeMap::new() }
+    }
+
+    pub fn producer_aggregate(&self) -> NsqTopicProducerAggregate {
+        let mut aggregate = NsqTopicProducerAggregate { hostname: s!(""), depth: 0, message_count: 0 };
+
+        for producer in self.producers.values() {
+            aggregate.depth += producer.depth;
+            aggregate.message_count += producer.message_count;
+        }
+
+        aggregate
+    }
+}
+
+pub struct NsqTopicConsumerSnapshot {
+    pub channel_name: String,
+    pub finish_count: u64,
+    pub in_progress: u64,
+    pub depth: u64
+}
+
+impl NsqTopicConsumerSnapshot {
+    fn new(channel_name: String) -> Self {
+        NsqTopicConsumerSnapshot { channel_name, finish_count: 0, in_progress: 0, depth: 0}
+    }
+
+    fn merge(&mut self, channel_status: &ChannelStatus) {
+        self.depth += channel_status.depth;
+        self.in_progress += channel_status.in_flight_count;
+        self.finish_count += channel_status.message_count;
+    }
+}
+
+pub struct NsqTopicProducerSnapshot {
+    pub hostname: String,
+    pub message_count: u64,
+    pub depth: u64
+}
+
+impl NsqTopicProducerSnapshot {
+    fn new(hostname: String, message_count: u64, depth: u64) -> Self {
+        NsqTopicProducerSnapshot { hostname, message_count, depth }
+    }
+}
+
+impl HostDetails {
+    fn new(hostname: String) -> Self {
+        HostDetails {
+            hostname: hostname,
+            status: RwLock::new(Vec::new()),
+            disable_host: false
+        }
+    }
+
+    fn initalize<'a>(&'a mut self, filter: &'a NsqFilter) {
+        let consumer_hostnames: BTreeSet<String> = self.status.read().unwrap().iter()
+            .flat_map(|status| status.channels.iter())
+            .flat_map(|channel| channel.consumers.iter().map(|consumer| consumer.hostname.clone()))
+            .collect();
+
+        let topic_names: BTreeSet<String> = self.status.read().unwrap().iter()
+            .map(|status| status.topic_name.clone())
+            .collect();
+
+        match filter {
+            NsqFilter::Host { hosts } => {
+                self.disable_host = hosts.intersection(&consumer_hostnames).count() == 0
+            },
+            NsqFilter::HostAndTopic { hosts, topics } => {
+                if hosts.intersection(&consumer_hostnames).count() == 0 {
+                    self.disable_host = true;
+                } else {
+                    self.disable_host = topics.intersection(&topic_names).count() == 0;
+                }
+            }
+            NsqFilter::Topic { topics } => {
+                self.disable_host = topics.intersection(&topic_names).count() == 0;
+            }
+        }
+    }
+
+    async fn update_status<'a>(&'a self, pb: &'a ProgressBarHelper) {
+        if self.disable_host {
+            pb.inc();
+            return;
+        }
+
+        let root = match do_get(&format!("http://{}/stats?format=json", self.hostname)) {
+            Some(root) => root,
+            None => {
+                return;
+            }
+        };
+
+        let details = match serde_json::from_value::<StatusTopicsDetails>(root.clone()) {
+            Ok(details) => details,
+            Err(_) => {
+                match serde_json::from_value::<StatusTopicsResponse>(root.clone()) {
+                    Ok(root) => root.data,
+                    Err(err) => {
+                        warn!("Unable to deserialize {} from the stats because {:?}", root, err);
+                        return;
+                    }
+                }
+            }
+        };
+
+        let mut result: Vec<HostTopicStatus> = Vec::new();
+
+        for topic in details.topics {
+            let topic_name = topic.topic_name;
+            let depth = topic.depth;
+            let message_count = topic.message_count;
+
+            let channels: Vec<ChannelStatus> = topic.channels.into_iter().map(|channel| ChannelStatus::new(topic_name.clone(), channel)).collect();
+
+            let topic_status = HostTopicStatus {
+                topic_name: topic_name.clone(),
+                depth,
+                message_count, 
+                channels
+            };
+
+            result.push(topic_status);
+        }
+
+        let mut locked_status = self.status.write().unwrap();
+        locked_status.clear();
+        locked_status.extend(result);
+
+        pb.inc();
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct HostTopicStatus {
     pub topic_name: String,
     pub depth: u64,
     pub message_count: u64,
-    pub channels: Vec<TopicChannel>,
+    pub channels: Vec<ChannelStatus>
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct TopicChannel {
+#[derive(Debug, Serialize)]
+struct ChannelStatus {
+    pub channel_name: String,
+    pub topic_name: String,
     pub depth: u64,
     pub in_flight_count: u64,
-    pub channel_name: String,
-    pub clients: Vec<ClientDetails>
+    pub message_count: u64,
+    pub consumers: Vec<ConsumerHost>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ClientDetails {
-    pub hostname: String
-}
-
-#[derive(Serialize, Deserialize)]
-struct LookupProducer {
-    remote_address: String,
-    hostname: String,
-    broadcast_address: String,
-    tcp_port: i32,
-    http_port: i32,
-    version: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct LookupResponse {
-    status_code: i32,
-    data: LookupData,
-}
-
-#[derive(Serialize, Deserialize)]
-struct LookupData {
-    producers: Vec<LookupProducer>,
-}
-
-lazy_static! {
-    static ref PING_VALIDATION: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
-}
-
-pub fn get_base_url_for_topic(nsq_lookup: &str, topic: &str) -> Option<TopicUrlElement> {
-    let url = format!("http://{}/lookup?topic={}", nsq_lookup, topic);
-    let url = Url::parse(&url).expect("URL to be valid");
-    let body = match reqwest::get(url) {
-        Err(e) => {
-            error!("Unable to talk to NSQ: {}", e.to_string());
-            return None;
-        }
-        Ok(mut resp) => {
-            if !resp.status().is_success() {
-                error!("NSQ returned with an error: {:#?}", resp.text());
-                return None;
-            } else {
-                resp.text().unwrap()
-            }
-        }
-    };
-
-    let json_body: LookupResponse =
-        serde_json::from_str(&body).expect("To be able to get LookupResponse from NSQ API");
-    let mut hosts: BTreeSet<String> = BTreeSet::new();
-
-    for producer in json_body.data.producers {
-        let base_url = format!(
-            "http://{}:{}",
-            producer.broadcast_address, producer.http_port
-        );
-
-        let mut lock = PING_VALIDATION.lock().unwrap();
-
-        if !lock.contains(&base_url) {
-            let url = format!("{}/ping", base_url.clone());
-            let url = Url::parse(&url).expect("URL to be valid");
-            if let Ok(_) = reqwest::get(url) {
-                lock.insert(base_url.clone());
-            }
-        }
-
-        if lock.contains(&base_url) {
-            hosts.insert(base_url.clone());
-        }
-    }
-
-    if hosts.is_empty() {
-        error!("Unable to connect to NSQ host to send messages!");
-        return None;
-    }
-
-    return Some(TopicUrlElement::new(s!(topic), hosts));
-}
-
-pub fn get_base_url_for_hosts(nsq_lookup: &str, hosts: &[&str]) -> Option<Vec<TopicUrlElement>> {
-    let mut host_set: HashSet<String> = HashSet::new();
-    for host in hosts {
-        host_set.insert(s!(host));
-    }
-
-    let url = format!("http://{}/nodes", nsq_lookup);
-    let url = Url::parse(&url).expect("URL to be valid");
-    let body = match reqwest::get(url) {
-        Err(e) => {
-            error!("Unable to talk to NSQ: {}", e.to_string());
-            return None;
-        }
-        Ok(mut resp) => {
-            if !resp.status().is_success() {
-                error!("NSQ returned with an error: {:#?}", resp.text());
-                return None;
-            } else {
-                resp.text().unwrap()
-            }
-        }
-    };
-
-    let root_json: serde_json::Value = serde_json::from_str(&body).expect("To be able to get LookupResponse from NSQ API");
-    let empty_vec: Vec<serde_json::Value> = vec![];
-    let producers = root_json["data"]["producers"].as_array().unwrap_or(&empty_vec);
-
-    let mut topic_map: BTreeMap<String, TopicUrlElement> = BTreeMap::new();
-    let mut topic_set: HashSet<String> = HashSet::new();
-
-    let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(producers.len(), "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}"));
-
-    for producer in producers {
-        let hostname = producer["hostname"].as_str().unwrap();
-        pb.inc_with_message(&format!("Checking on {}", hostname));
-        let url = format!("http://{}:{}/stats?format=json", hostname, producer["http_port"].as_u64().unwrap());
-        if let Some(data) = get_topic_status_from_url(&url) {
-            data.topics.into_iter().filter(|topic| {
-                return topic.channels.iter().any(|channel| {
-                    return channel.clients.iter().any(|x| host_set.contains(&x.hostname));
-                });
-            })
-            .for_each(|topic| {
-                topic_set.insert(topic.topic_name);
-            });
-        }
-    }
-    
-    for topic in topic_set {
-        if let Some(found_topic) = get_base_url_for_topic(nsq_lookup, &topic) {
-            let topic_name = format!("{}", topic);
-            if !topic_map.contains_key(&topic_name.clone()) {
-                topic_map.insert(topic_name.clone(), TopicUrlElement::new(topic_name.clone(), BTreeSet::new()));
-            }
-
-            topic_map.get_mut(&topic_name).unwrap().add_urls(found_topic.urls);
-        }
-    }
-
-    let result: Vec<TopicUrlElement> = topic_map.into_iter().map(|(_, v)| v).collect();
-    Some(result)
-}
-
-pub fn get_queue_size(base_url: &str, topic: &str) -> Option<(u64, u64)> {
-    match get_topic_status(base_url, topic) {
-        Some(root) => extract_size_from_body(root, topic),
-        None => None,
-    }
-}
-
-pub fn get_topic_status(base_url: &str, topic: &str) -> Option<StatusTopicsDetails> {
-    let topic_url = format!("{}/stats?format=json&topic={}", base_url, topic);
-    get_topic_status_from_url(&topic_url) 
-}
-
-fn get_topic_status_from_url(url: &str) -> Option<StatusTopicsDetails> {
-    let topic_url = Url::parse(&url).expect("URL to be valid");
-
-    if let Ok(mut response) = reqwest::get(topic_url) {
-        if let Ok(body) = response.text() {
-            let json_body: Result<StatusTopicsDetails, _> = serde_json::from_str(&body);
-            if let Ok(root) = json_body {
-                return Some(root);
-            } else {
-                let json_body: Result<StatusTopicsResponse, serde_json::error::Error> = serde_json::from_str(&body);
-                return match json_body {
-                    Ok(root) => Some(root.data),
-                    Err(err) => {
-                        warn!("Unable to deserialize {} from the stats because {:?}", body, err);
-                        return None;
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-fn extract_size_from_body(body: StatusTopicsDetails, topic: &str) -> Option<(u64, u64)> {
-    let topic_details: Option<TopicDetails> =
-        body.topics.into_iter().find(|x| x.topic_name == topic);
-
-    match topic_details {
-        None => None,
-        Some(topic) => {
-            let mut queued = topic.depth;
-            let mut in_flight: u64 = 0;
-            for channel in topic.channels {
-                if channel.depth > queued {
-                    queued = channel.depth;
-                }
-
-                if channel.in_flight_count > in_flight {
-                    in_flight = channel.in_flight_count;
-                }
-            }
-            Some((queued, in_flight))
+impl ChannelStatus {
+    fn new(topic_name: String, channel: TopicChannel) -> Self {
+        let consumers: Vec<ConsumerHost> = channel.clients.iter().map(|x| ConsumerHost::new(x)).collect();
+        ChannelStatus {
+            channel_name: channel.channel_name,
+            topic_name,
+            depth: channel.depth,
+            in_flight_count: channel.in_flight_count,
+            message_count: channel.message_count,
+            consumers
         }
     }
 }
 
-#[test]
-fn test_extract_size() {
-    let body = "{
-    \"version\": \"1.1.0\",
-    \"health\": \"OK\",
-    \"start_time\": 1548185315,
-    \"topics\": [
-        {
-            \"topic_name\": \"foo\",
-            \"channels\": [
-                {
-                    \"channel_name\": \"tail180292#ephemeral\",
-                    \"depth\": 3,
-                    \"backend_depth\": 0,
-                    \"in_flight_count\": 1,
-                    \"deferred_count\": 0,
-                    \"message_count\": 1399,
-                    \"requeue_count\": 0,
-                    \"timeout_count\": 0,
-                    \"clients\": [
-                        {
-                            \"client_id\": \"ethan\",
-                            \"hostname\": \"ethan.local\",
-                            \"version\": \"V2\",
-                            \"remote_address\": \"1.2.3.4:33576\",
-                            \"state\": 3,
-                            \"ready_count\": 1,
-                            \"in_flight_count\": 1,
-                            \"message_count\": 1396,
-                            \"finish_count\": 1395,
-                            \"requeue_count\": 0,
-                            \"connect_ts\": 1549065745,
-                            \"sample_rate\": 0,
-                            \"deflate\": false,
-                            \"snappy\": false,
-                            \"user_agent\": \"nsq_tail/1.1.0 go-nsq/1.0.6\",
-                            \"tls\": false,
-                            \"tls_cipher_suite\": \"\",
-                            \"tls_version\": \"\",
-                            \"tls_negotiated_protocol\": \"\",
-                            \"tls_negotiated_protocol_is_mutual\": false
-                        }
-                    ],
-                    \"paused\": false,
-                    \"e2e_processing_latency\": {
-                        \"count\": 0,
-                        \"percentiles\": null
-                    }
-                }
-            ],
-            \"depth\": 0,
-            \"backend_depth\": 0,
-            \"message_count\": 29259,
-            \"paused\": false,
-            \"e2e_processing_latency\": {
-                \"count\": 0,
-                \"percentiles\": null
-            }
-        }
-    ],
-    \"memory\": {
-        \"heap_objects\": 21625,
-        \"heap_idle_bytes\": 11886592,
-        \"heap_in_use_bytes\": 3743744,
-        \"heap_released_bytes\": 10280960,
-        \"gc_pause_usec_100\": 5612,
-        \"gc_pause_usec_99\": 3742,
-        \"gc_pause_usec_95\": 878,
-        \"next_gc_bytes\": 4194304,
-        \"gc_total_runs\": 219
-    }
-}";
-
-    let body: StatusTopicsDetails = serde_json::from_str(body).unwrap();
-
-    let (queued, in_flight) = extract_size_from_body(body, "foo").unwrap();
-    assert_eq!(3, queued);
-    assert_eq!(1, in_flight);
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, PartialOrd)]
+struct ConsumerHost {
+    hostname: String
 }
 
-#[test]
-fn older_api_test() {
-    let body = "{
-  \"status_code\": 200,
-  \"status_txt\": \"OK\",
-  \"data\": {
-    \"version\": \"0.3.8\",
-    \"health\": \"OK\",
-    \"start_time\": 1543350728,
-    \"topics\": [
-        {
-            \"topic_name\": \"foo\",
-            \"channels\": [
-                {
-                    \"channel_name\": \"tail180292#ephemeral\",
-                    \"depth\": 3,
-                    \"backend_depth\": 0,
-                    \"in_flight_count\": 1,
-                    \"deferred_count\": 0,
-                    \"message_count\": 1399,
-                    \"requeue_count\": 0,
-                    \"timeout_count\": 0,
-                    \"clients\": [
-                        {
-                            \"client_id\": \"ethan\",
-                            \"hostname\": \"ethan.local\",
-                            \"version\": \"V2\",
-                            \"remote_address\": \"1.2.3.4:33576\",
-                            \"state\": 3,
-                            \"ready_count\": 1,
-                            \"in_flight_count\": 1,
-                            \"message_count\": 1396,
-                            \"finish_count\": 1395,
-                            \"requeue_count\": 0,
-                            \"connect_ts\": 1549065745,
-                            \"sample_rate\": 0,
-                            \"deflate\": false,
-                            \"snappy\": false,
-                            \"user_agent\": \"nsq_tail/1.1.0 go-nsq/1.0.6\",
-                            \"tls\": false,
-                            \"tls_cipher_suite\": \"\",
-                            \"tls_version\": \"\",
-                            \"tls_negotiated_protocol\": \"\",
-                            \"tls_negotiated_protocol_is_mutual\": false
-                        }
-                    ],
-                    \"paused\": false,
-                    \"e2e_processing_latency\": {
-                        \"count\": 0,
-                        \"percentiles\": null
-                    }
-                }
-            ],
-            \"depth\": 0,
-            \"backend_depth\": 0,
-            \"message_count\": 29259,
-            \"paused\": false,
-            \"e2e_processing_latency\": {
-                \"count\": 0,
-                \"percentiles\": null
-            }
-        }
-    ],
-    \"memory\": {
-        \"heap_objects\": 21625,
-        \"heap_idle_bytes\": 11886592,
-        \"heap_in_use_bytes\": 3743744,
-        \"heap_released_bytes\": 10280960,
-        \"gc_pause_usec_100\": 5612,
-        \"gc_pause_usec_99\": 3742,
-        \"gc_pause_usec_95\": 878,
-        \"next_gc_bytes\": 4194304,
-        \"gc_total_runs\": 219
+impl ConsumerHost {
+    fn new(details: &ClientDetails) -> Self {
+        ConsumerHost {
+            hostname: details.hostname.clone()
         }
     }
-}";
-
-    let body: StatusTopicsResponse = serde_json::from_str(body).unwrap();
-
-    let (queued, in_flight) = extract_size_from_body(body.data, "foo").unwrap();
-    assert_eq!(3, queued);
-    assert_eq!(1, in_flight);
 }

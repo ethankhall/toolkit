@@ -89,10 +89,14 @@ subcommands:
       settings:
         - SubcommandRequiredElseHelp
       subcommands:
-        - topic-stats:
-            about: Shows the status of NSQ Topic
-            settings:
-              - ArgRequiredElseHelp
+        - stats:
+            about: Shows the stats on NSQ
+            groups: 
+                - filter:
+                    required: true
+                    args:
+                        - hosts
+                        - topics
             args:
                 - count:
                     help: How many times should I report back?
@@ -104,61 +108,26 @@ subcommands:
                     long: lookupd-host
                     takes_value: true
                     required: true
+                    env: NSQ_LOOKUP_HOST
                 - nsq_lookup_port:
                     help: Port to NSQ Lookup
                     long: lookupd-port
                     takes_value: true
                     default_value: "4161"
+                    env: NSQ_LOOKUP_PORT
                 - delay:
                     help: Ideally, how long between checks to NSQ, in seconds.
                     long: delay
                     takes_value: true
                     default_value: "1"
-                - hide_zero_depth:
-                    help: Hide topic report where backlog is 0
-                    long: hide-zero-depth
-                - hide_hosts:
-                    help: Hide the "host" section of the table
-                    long: hide-host-table
-                - TOPIC:
-                    help: Which topic should be check on?
-                    required: true
+                - hosts:
+                    help: Limit to specific hosts
+                    long: filter-hosts
                     takes_value: true
                     multiple: true
-        - host-stats:
-            about: Shows stats by Host
-            settings:
-              - ArgRequiredElseHelp
-            args:
-                - hide_zero_depth:
-                    help: Hide topic report where backlog is 0
-                    long: hide-zero-depth
-                - count:
-                    help: How many times should I report back?
-                    short: c
-                    long: count
-                    takes_value: true
-                - nsq_lookup_host:
-                    help: Host to NSQ Lookup
-                    long: lookupd-host
-                    takes_value: true
-                    required: true
-                - nsq_lookup_port:
-                    help: Port to NSQ Lookup
-                    long: lookupd-port
-                    takes_value: true
-                    default_value: "4161"
-                - delay:
-                    help: Ideally, how long between checks to NSQ, in seconds.
-                    long: delay
-                    takes_value: true
-                    default_value: "10"
-                - hide_hosts:
-                    help: Hide the "host" section of the table
-                    long: hide-host-table
-                - HOSTS:
-                    help: Which hosts should be reported on?
-                    required: true
+                - topics:
+                    help: Limit to specific topics
+                    long: filter-topics
                     takes_value: true
                     multiple: true
         - send:

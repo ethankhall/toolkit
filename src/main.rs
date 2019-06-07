@@ -39,7 +39,7 @@ use clap::App;
 use commands::har::exec::do_har_command;
 use commands::json::*;
 use commands::nsq::post::do_send_command;
-use commands::nsq::stats::{do_topic_status_command, do_host_status_command};
+use commands::nsq::stats::do_stats_command;
 use commands::time::do_time_command;
 use kopy_common_lib::configure_logging;
 
@@ -65,8 +65,7 @@ fn main() {
         },
         ("nsq", Some(nsq_matches)) => match nsq_matches.subcommand() {
             ("send", Some(send_matches)) => do_send_command(send_matches),
-            ("topic-stats", Some(send_matches)) => do_topic_status_command(send_matches),
-            ("host-stats", Some(send_matches)) => do_host_status_command(send_matches),
+            ("stats", Some(send_matches)) => do_stats_command(send_matches),
             _ => unreachable!(),
         },
         _ => unreachable!(),

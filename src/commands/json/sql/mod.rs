@@ -9,7 +9,6 @@ use json::JsonValue;
 use super::{parse_path, find_field};
 
 use crate::commands::CliError;
-use crate::commands::progress::*;
 
 pub fn do_json_sql_command(args: &ArgMatches)-> Result<(), CliError> {
 
@@ -88,7 +87,7 @@ impl LineProcessor {
     }
 
     fn filter_obj(&self, parent: &JsonValue) -> bool {
-        if let JsonValue::Object(obj) = parent {
+        if let JsonValue::Object(_obj) = parent {
             true
         } else {
             error!("{:?} is not a json object", parent);

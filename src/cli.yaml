@@ -89,10 +89,14 @@ subcommands:
       settings:
         - SubcommandRequiredElseHelp
       subcommands:
-        - status:
-            about: Shows the status of NSQ Topic
-            settings:
-              - ArgRequiredElseHelp
+        - stats:
+            about: Shows the stats on NSQ
+            groups: 
+                - filter:
+                    required: true
+                    args:
+                        - producers
+                        - topics
             args:
                 - count:
                     help: How many times should I report back?
@@ -104,19 +108,26 @@ subcommands:
                     long: lookupd-host
                     takes_value: true
                     required: true
+                    env: NSQ_LOOKUP_HOST
                 - nsq_lookup_port:
                     help: Port to NSQ Lookup
                     long: lookupd-port
                     takes_value: true
                     default_value: "4161"
+                    env: NSQ_LOOKUP_PORT
                 - delay:
                     help: Ideally, how long between checks to NSQ, in seconds.
                     long: delay
                     takes_value: true
                     default_value: "1"
-                - TOPIC:
-                    help: Which topic should be check on
-                    required: true
+                - producers:
+                    help: Limit to specific producers
+                    long: filter-producers
+                    takes_value: true
+                    multiple: true
+                - topics:
+                    help: Limit to specific topics
+                    long: filter-topics
                     takes_value: true
                     multiple: true
         - send:
@@ -165,6 +176,22 @@ subcommands:
       settings:
             - SubcommandRequiredElseHelp
       subcommands:
+        - sql:
+            about: Filter new-line delemited JSON using a SQL like expression. 
+            settings:
+                - ArgRequiredElseHelp
+                - Hidden
+            args:
+                - EXP:
+                    help: SQL expression
+                    required: true
+                    takes_value: true
+                    last: true
+                - json:
+                    help: Path to file to process
+                    takes_value: true
+                    required: true
+                    long: json
         - latest:
             about: Filter new-line delemited JSON stream to the newest message
             long_about: If a JSON blob has both an ID that's unique, and a timestamp/version field. Filter the stream for the latest ID/version field.

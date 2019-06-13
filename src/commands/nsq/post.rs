@@ -8,8 +8,8 @@ use clap::ArgMatches;
 use crossbeam_channel::bounded;
 use crossbeam_channel::Receiver;
 
-use indicatif::{ProgressBar, ProgressStyle};
-
+use crate::commands::nsq::api::*;
+use crate::commands::progress::*;
 use crate::commands::CliError;
 
 const RATE_LIMIT: &str = "200";
@@ -107,6 +107,13 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
         )
     };
 
+    let status = NsqState::new(
+        &options.nsq_lookup,
+        NsqFilter::Topic {
+            topics: vec![options.topic.clone()].into_iter().collect(),
+        },
+    );
+
     debug!("Capacity of in messages: {}", capacity);
     debug!("Interval of new tokens: {:?}", interval);
 
@@ -117,21 +124,20 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
 
     THREADS_RUNNING.store(true, Ordering::SeqCst);
 
-    let urls = super::api::get_base_url_for_topic(&options.nsq_lookup, &options.topic);
-    let base_url = if urls.is_empty() {
-        return Err(CliError::new("Unable to get NSQ Host", 2));
-    } else {
-        format!("{}", urls.first().unwrap())
+    let base_addresss = match status.get_topic_url(&options.topic.clone()) {
+        Some(address) => address,
+        None => {
+            error!("NSQ does now know about topic {}", options.topic);
+            return Err(CliError::new("Unable to get NSQ Host", 2));
+        }
     };
 
-    let submit_url = format!("{}/pub?topic={}", base_url, &options.topic);
+    let submit_url = format!("{}/pub?topic={}", base_addresss, &options.topic);
 
-    let style = ProgressStyle::default_bar()
-        .template("[{elapsed_precise}] {bar:80.cyan/blue} {pos:>7}/{len:7} {msg}")
-        .progress_chars("##-");
-    let progress_bar = ProgressBar::new(options.limit as u64);
-    progress_bar.set_style(style.clone());
-    progress_bar.enable_steady_tick(1000);
+    let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(
+        options.limit,
+        "[{elapsed_precise}] {bar:80.cyan/blue} {pos:>7}/{len:7} {msg}",
+    ));
 
     let (s1, r1) = bounded(20);
 
@@ -146,8 +152,8 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
     }
 
     let topic = format!("{}", options.topic);
-    do_api_check(&base_url, &topic);
-    threads.push(thread::spawn(move || check_api_status(&base_url, &topic)));
+    do_api_check(&topic, &status);
+    threads.push(thread::spawn(move || check_api_status(&topic, &status)));
 
     let reader = crate::commands::file::open_file(options.file.to_str().unwrap())?;
     let reader = BufReader::new(reader);
@@ -157,7 +163,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
         loop {
             let max_depth = API_DEPTH.load(Ordering::SeqCst);
             let in_flight = API_IN_FLIGHT.load(Ordering::SeqCst);
-            progress_bar.set_message(&format!(
+            pb.set_message(&format!(
                 "In Progress: {:4}\tBacklog Size: {:4}\tOffset: {}",
                 in_flight,
                 max_depth,
@@ -178,7 +184,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
         }
 
         ratelimit.wait();
-        progress_bar.inc(1);
+        pb.inc();
 
         if options.offset > counter {
             OFFSET.fetch_add(1, Ordering::SeqCst);
@@ -189,7 +195,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
             ERRORS.fetch_add(1, Ordering::SeqCst);
         }
     }
-    progress_bar.finish();
+    pb.done();
 
     THREADS_RUNNING.store(false, Ordering::SeqCst);
 
@@ -211,24 +217,22 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
     return Ok(());
 }
 
-fn check_api_status(base_url: &str, topic: &str) {
+fn check_api_status(topic: &str, state: &NsqState) {
     loop {
         if !THREADS_RUNNING.load(Ordering::SeqCst) {
             return;
         }
 
-        do_api_check(base_url, topic);
+        do_api_check(topic, state);
+        std::thread::sleep(Duration::from_millis(200));
     }
 }
 
-fn do_api_check(base_url: &str, topic: &str) {
-    if let Some((max_depth, in_flight)) = super::api::get_queue_size(base_url, topic) {
-        let max_depth = std::cmp::max(0, max_depth) as usize;
-        let in_flight = std::cmp::max(0, in_flight) as usize;
-        API_IN_FLIGHT.store(in_flight, Ordering::SeqCst);
-        API_DEPTH.store(max_depth, Ordering::SeqCst);
-        std::thread::sleep(Duration::from_millis(200));
-    }
+fn do_api_check(topic: &str, state: &NsqState) {
+    let snapshot = state.update_status();
+    let agg = snapshot.topics.get(topic).unwrap().producer_aggregate();
+    let max_depth = std::cmp::max(0, agg.depth) as usize;
+    API_DEPTH.store(max_depth, Ordering::SeqCst);
 }
 
 fn process_messages(reciever: Receiver<String>, path: String) {

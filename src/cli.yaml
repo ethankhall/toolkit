@@ -95,7 +95,7 @@ subcommands:
                 - filter:
                     required: true
                     args:
-                        - hosts
+                        - producers
                         - topics
             args:
                 - count:
@@ -120,9 +120,9 @@ subcommands:
                     long: delay
                     takes_value: true
                     default_value: "1"
-                - hosts:
-                    help: Limit to specific hosts
-                    long: filter-hosts
+                - producers:
+                    help: Limit to specific producers
+                    long: filter-producers
                     takes_value: true
                     multiple: true
                 - topics:

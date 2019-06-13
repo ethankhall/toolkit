@@ -53,15 +53,15 @@ impl ConfigOptions {
 pub fn do_stats_command(matches: &ArgMatches) -> Result<(), CliError> {
     let config = ConfigOptions::new(matches);
 
-    let filter = match (matches.values_of("hosts"), matches.values_of("topics")) {
+    let filter = match (matches.values_of("producers"), matches.values_of("topics")) {
         (Some(hosts), Some(topics)) => {
-            NsqFilter::HostAndTopic { hosts: hosts.map(|x| s!(x)).collect(), topics: topics.map(|x| s!(x)).collect() }
+            NsqFilter::ProducerAndTopic { hosts: hosts.map(|x| s!(x)).collect(), topics: topics.map(|x| s!(x)).collect() }
         },
         (None, Some(topics)) => {
             NsqFilter::Topic { topics: topics.map(|x| s!(x)).collect() }
         },
         (Some(hosts), None) => {
-            NsqFilter::Host { hosts: hosts.map(|x| s!(x)).collect() }
+            NsqFilter::Producer { hosts: hosts.map(|x| s!(x)).collect() }
         },
         _ => unimplemented!()
     };

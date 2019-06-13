@@ -1,4 +1,4 @@
-use std::sync::{RwLock, Arc};
+use std::sync::Arc;
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::prelude::*;
@@ -10,7 +10,10 @@ use crate::commands::progress::*;
 use super::model::*;
 
 lazy_static! {
-    static ref HTTP_CLIENT: reqwest::r#async::Client = reqwest::r#async::Client::builder().build().expect("Should be able to make client");
+    static ref HTTP_CLIENT: reqwest::r#async::Client = reqwest::r#async::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("Should be able to make client");
 }
 
 fn do_get(url: &str) -> impl Future<Item=serde_json::Value, Error=String> {
@@ -45,31 +48,20 @@ enum ErrorType {
 
 #[derive(Debug, Clone, Serialize)]
 pub enum NsqFilter {
-    Host { hosts: BTreeSet<String> },
+    Producer { hosts: BTreeSet<String> },
     Topic { topics: BTreeSet<String> },
-    HostAndTopic { hosts: BTreeSet<String>, topics: BTreeSet<String> }
-}
-
-impl NsqFilter {
-    fn include_topic(&self, topic_name: &str) -> bool {
-        match self {
-            NsqFilter::Host { hosts: _ } => true,
-            NsqFilter::HostAndTopic { hosts: _, topics } => topics.iter().any(|topic| topic == topic_name),
-            NsqFilter::Topic { topics } => topics.iter().any(|topic| topic == topic_name),
-        }
-    }
+    ProducerAndTopic { hosts: BTreeSet<String>, topics: BTreeSet<String> }
 }
 
 #[derive(Debug, Serialize)]
 pub struct NsqState {
-    host_details: BTreeMap<String, HostDetails>,
-    filter: NsqFilter
+    host_details: BTreeMap<String, HostDetails>
 }
 
 #[derive(Debug, Serialize)]
 struct HostDetails {
     hostname: String,
-    disable_host: bool,
+    base_url: String,
     topics: BTreeSet<String>
 }
 
@@ -92,7 +84,8 @@ impl NsqState {
             for producer in producers {
                 let hostname = producer["hostname"].as_str().unwrap();
                 let port = producer["http_port"].as_u64().unwrap();
-                host_details.entry(s!(hostname)).or_insert_with(|| HostDetails::new(format!("{}:{}", hostname, port)));
+                let topics = producer["topics"].as_array().unwrap().iter().map(|x| s!(x.as_str().unwrap())).collect();
+                host_details.entry(s!(hostname)).or_insert_with(|| HostDetails::new(hostname, port, topics));
             }
 
             Ok(host_details)
@@ -100,36 +93,52 @@ impl NsqState {
 
         let mut host_details = runtime.block_on(host_details_fut).expect("To be able to talk to NSQ");
 
-        let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(host_details.len(), "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} Waiting for NSQ nodes to respond"));
-        let pb = Arc::new(pb);
-
-        let mut runtime = Runtime::new().unwrap();
-        let mut futures: Vec<_> = Vec::new();
-        for (_key, value) in host_details.iter() {
-                if let Some(future) = value.create_host_status() {
-                    let pb = pb.clone();
-                    futures.push(future.and_then(move |x| { pb.inc(); Ok(x) }));
-                } else {
-                    pb.inc();
-                }
+        let (topics_to_include, producers_to_include) = match filter {
+            NsqFilter::Producer { hosts } => {
+                (None, Some(hosts))
+            },
+            NsqFilter::ProducerAndTopic { hosts, topics } => {
+                (Some(topics), Some(hosts))
+            }
+            NsqFilter::Topic { topics } => {
+                (Some(topics), None)
+            }
         };
 
-        let uber_future = future::join_all(futures);
-        let statuses = runtime.block_on(uber_future).expect("API to be somewhat stable");
+        if let Some(producers) = producers_to_include {
+            let mut remove_list = vec![];
 
-        host_details.values_mut().for_each(|x| {
-            if let Some(status) = statuses.iter().find(|status| status.hostname == x.hostname) {
-                x.initalize(&status, &filter)
-            } else {
-                x.disable_host = true
+            for (key, _host) in host_details.iter() {
+                if producers.contains(key) {
+                    remove_list.push(key.clone());
+                }
             }
-        });
 
-        pb.done();
+            for host in remove_list {
+                host_details.remove(&host);
+            }
+        }
+
+        if let Some(topics) = topics_to_include {
+            let mut remove_list = vec![];
+
+            for (key, host) in host_details.iter_mut() {
+                let mut intersection: BTreeSet<_> = host.topics.intersection(&topics).map(|x| x.clone()).collect();
+                host.topics.clear();
+                host.topics.append(&mut intersection);
+
+                if host.topics.len() == 0 {
+                    remove_list.push(key.clone());
+                }
+            }
+
+            for host in remove_list {
+                host_details.remove(&host);
+            }
+        }
 
         NsqState {
-            host_details,
-            filter
+            host_details
         }
     }
 
@@ -141,12 +150,9 @@ impl NsqState {
         let mut runtime = Runtime::new().unwrap();
         let mut futures: Vec<_> = Vec::new();
         for (_key, value) in self.host_details.iter() {
-                if let Some(future) = value.create_host_status() {
-                    let pb = pb.clone();
-                    futures.push(future.and_then(move |x| { pb.inc(); Ok(x) }));
-                } else {
-                    pb.inc();
-                }
+                let future = value.create_host_status();
+                let pb = pb.clone();
+                futures.push(future.and_then(move |x| { pb.inc(); Ok(x) }));
         };
         
         let uber_future = future::join_all(futures);
@@ -155,7 +161,7 @@ impl NsqState {
         self.make_snapshot(statuses)
     }
 
-    pub fn make_snapshot(&self, host_status_vec: Vec<HostStatus>) -> NsqSnapshot {
+    fn make_snapshot(&self, host_status_vec: Vec<HostStatus>) -> NsqSnapshot {
         let mut snapshot = NsqSnapshot { pull_finished: Local::now(), topics: BTreeMap::new(), producers: BTreeMap::new() };
 
         for details in host_status_vec {
@@ -163,7 +169,9 @@ impl NsqState {
                 let topic_name = topic_status.topic_name.clone();
                 let producer_hostname = details.hostname.clone();
 
-                if self.filter.include_topic(&topic_name) {
+                let host_details = self.host_details.get(&producer_hostname).unwrap();
+
+                if host_details.topics.contains(&topic_name) {
                     let topic_snapshot = snapshot.topics.entry(topic_name.clone()).or_insert_with(|| NsqTopicSnapshot::new(topic_name));
                     let producer_snapshot = NsqTopicProducerSnapshot::new(producer_hostname.clone(), topic_status.message_count, topic_status.depth);
                     topic_snapshot.producers.insert(producer_hostname.clone(), producer_snapshot);
@@ -271,49 +279,20 @@ impl NsqTopicProducerSnapshot {
 }
 
 impl HostDetails {
-    fn new(hostname: String) -> Self {
+    fn new(hostname: &str, port: u64, topic: Vec<String>) -> Self {
+        use std::iter::FromIterator;
+
         HostDetails {
-            hostname: hostname,
-            disable_host: false,
-            topics: BTreeSet::new()
+            hostname: s!(hostname),
+            base_url: format!("{}:{}", hostname, port),
+            topics: BTreeSet::from_iter(topic.into_iter())
         }
     }
 
-    fn initalize<'a>(&'a mut self, host_status: &HostStatus, filter: &'a NsqFilter) {
-        let consumer_hostnames: BTreeSet<String> = host_status.status.iter()
-            .flat_map(|status| status.channels.iter())
-            .flat_map(|channel| channel.consumers.iter().map(|consumer| consumer.hostname.clone()))
-            .collect();
-
-        let topic_names: BTreeSet<String> = host_status.status.iter()
-            .map(|status| status.topic_name.clone())
-            .collect();
-
-        match filter {
-            NsqFilter::Host { hosts } => {
-                self.disable_host = hosts.intersection(&consumer_hostnames).count() == 0
-            },
-            NsqFilter::HostAndTopic { hosts, topics } => {
-                if hosts.intersection(&consumer_hostnames).count() == 0 {
-                    self.disable_host = true;
-                } else {
-                    self.disable_host = topics.intersection(&topic_names).count() == 0;
-                }
-            }
-            NsqFilter::Topic { topics } => {
-                self.disable_host = topics.intersection(&topic_names).count() == 0;
-            }
-        }
-    }
-
-    fn create_host_status(&self) -> Option<impl Future<Item = HostStatus, Error = ErrorType>> {
-        if self.disable_host {
-            return None;
-        }
-
+    fn create_host_status(&self) -> impl Future<Item = HostStatus, Error = ErrorType> {
         let hostname = self.hostname.clone();
 
-        Some(do_get(&format!("http://{}/stats?format=json", self.hostname))
+        do_get(&format!("http://{}/stats?format=json", self.base_url))
             .map_err(|err| ErrorType::Fatal(format!("{}", err)))
             .and_then(|root| {
                 match serde_json::from_value::<StatusTopicsDetails>(root.clone()) {
@@ -355,7 +334,7 @@ impl HostDetails {
 
             
                 Ok(HostStatus { hostname: hostname, status: result })
-            }))
+            })
     }
 }
 

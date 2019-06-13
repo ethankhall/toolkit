@@ -3,20 +3,19 @@ mod parser;
 use std::io::{BufRead, BufReader, Read};
 
 use clap::ArgMatches;
-use parser::{Expression, SqlSource};
 use json::JsonValue;
+use parser::{Expression, SqlSource};
 
-use super::{parse_path, find_field};
+use super::{find_field, parse_path};
 
 use crate::commands::CliError;
 
-pub fn do_json_sql_command(args: &ArgMatches)-> Result<(), CliError> {
-
+pub fn do_json_sql_command(args: &ArgMatches) -> Result<(), CliError> {
     let exp = Expression::from(args.value_of("EXP").unwrap())?;
 
     let from_path = match exp.source {
         SqlSource::None => parse_path("."),
-        SqlSource::SqlFrom { path } => parse_path(&path)
+        SqlSource::SqlFrom { path } => parse_path(&path),
     };
 
     let input_paths: Vec<String> = args.values_of("json").unwrap().map(|x| s!(x)).collect();
@@ -31,7 +30,7 @@ pub fn do_json_sql_command(args: &ArgMatches)-> Result<(), CliError> {
                 continue;
             }
         };
-        
+
         line_processor.process_stream(reader);
     }
 
@@ -50,7 +49,7 @@ impl LineProcessor {
             match line {
                 Ok(line) => {
                     self.parse_json_line(line, line_counter);
-                },
+                }
                 Err(err) => error!("IO error: Line {}: {}", line_counter, err),
             }
         }
@@ -63,8 +62,8 @@ impl LineProcessor {
                     trace!("sub json: {:?}", sub_json);
                     self.process_json_line(sub_json)
                 }
-            },
-            Err(_) => error!("Line was not JSON: {}", line_number)
+            }
+            Err(_) => error!("Line was not JSON: {}", line_number),
         }
     }
 
@@ -76,13 +75,16 @@ impl LineProcessor {
                         self.print_fields(&value);
                     }
                 }
-            },
+            }
             JsonValue::Object(_) => {
                 if self.filter_obj(parent) {
                     self.print_fields(&parent);
                 }
-            },
-            _ => error!("Tried to parse an object that wasn't an array or object, got {:?}", parent)
+            }
+            _ => error!(
+                "Tried to parse an object that wasn't an array or object, got {:?}",
+                parent
+            ),
         }
     }
 

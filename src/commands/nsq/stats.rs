@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::io::{stdout, Stdout, Write};
 use std::{thread, time};
 
-use futures::executor::block_on;
 use chrono::prelude::*;
 use clap::ArgMatches;
 use colored::*;
@@ -67,7 +66,7 @@ pub fn do_stats_command(matches: &ArgMatches) -> Result<(), CliError> {
         _ => unimplemented!()
     };
 
-    let state = block_on(NsqState::new(&config.nsq_lookup, filter));
+    let state = NsqState::new(&config.nsq_lookup, filter);
 
     do_loop(&config, state);
     Ok(())
@@ -78,7 +77,7 @@ fn do_loop(config: &ConfigOptions, state: NsqState) {
     let mut counter = 0;
     let mut last_data = None;
     let mut buffer_size: i32 = -1;
-    let mut snapshot = state.get_status();
+    let mut snapshot = state.update_status();
 
     loop {
         if buffer_size > 0 {
@@ -92,7 +91,7 @@ fn do_loop(config: &ConfigOptions, state: NsqState) {
         write!(screen, "{}", termion::clear::AfterCursor).unwrap();
         
         let poll_start = Local::now();
-        snapshot = block_on(state.update_status());
+        snapshot = state.update_status();
 
         let diff = chrono::Duration::seconds(config.delay) - (Local::now() - poll_start);
         let sleep_time = if diff < chrono::Duration::zero() {

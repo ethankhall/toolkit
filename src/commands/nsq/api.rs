@@ -1,42 +1,46 @@
-use std::sync::RwLock;
+use std::sync::{RwLock, Arc};
 use std::collections::{BTreeMap, BTreeSet};
 
-use futures::future::{join_all};
 use chrono::prelude::*;
 use url::Url;
+use tokio::runtime::Runtime;
+use tokio::prelude::*;
 
 use crate::commands::progress::*;
 use super::model::*;
 
 lazy_static! {
-    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder().build().expect("Should be able to make client");
+    static ref HTTP_CLIENT: reqwest::r#async::Client = reqwest::r#async::Client::builder().build().expect("Should be able to make client");
 }
 
-fn do_get(url: &str) -> Option<serde_json::Value> {
+fn do_get(url: &str) -> impl Future<Item=serde_json::Value, Error=String> {
     let url = Url::parse(&url).expect("URL to be valid");
 
-    let body = match HTTP_CLIENT.get(url).send() {
-        Err(e) => {
-            error!("Unable to talk to NSQ: {}", e.to_string());
-            return None;
-        }
-        Ok(mut resp) => {
-            if !resp.status().is_success() {
-                error!("NSQ returned with an error: {:#?}", resp.text());
-                return None;
-            } else {
-                resp.text().unwrap()
+    HTTP_CLIENT.get(url).send()
+        .map_err(|e| s!(format!("{}", e)))
+        .and_then(|resp|{
+            let status = resp.status();
+            let text = resp.into_body().concat2().wait()
+                .and_then(|c| Ok(std::str::from_utf8(&c).map(str::to_owned).unwrap_or(s!("no body provided"))))
+                .unwrap_or(s!("no body provided"));
+            if !status.is_success() {
+                    Err(s!(format!("NSQ returned with an error: {:#?}", text)))
+                } else {
+                    Ok(s!(text))
+                }
+    }).and_then(|json_body| {
+        match serde_json::from_str(&json_body) {
+            Ok(value) => Ok(value),
+            Err(e) => {
+                Err(s!(format!("JSON Deseralization error: {:?}", e)))
             }
         }
-    };
+    })
+}
 
-    match serde_json::from_str(&body) {
-        Ok(value) => Some(value),
-        Err(e) => {
-            error!("JSON Deseralization error: {:?}", e);
-            None
-        }
-    }
+#[derive(Debug)]
+enum ErrorType {
+    Fatal(String)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -65,31 +69,61 @@ pub struct NsqState {
 #[derive(Debug, Serialize)]
 struct HostDetails {
     hostname: String,
-    status: RwLock<Vec<HostTopicStatus>>,
-    disable_host: bool
+    disable_host: bool,
+    topics: BTreeSet<String>
 }
 
+#[derive(Debug, Serialize)]
+struct HostStatus {
+    hostname: String,
+    status: Vec<HostTopicStatus>
+}
 
 impl NsqState {
-    pub async fn new(nsq_lookup: &str, filter: NsqFilter) -> Self {
-        let mut host_details: BTreeMap<String, HostDetails> = BTreeMap::new();
+    pub fn new(nsq_lookup: &str, filter: NsqFilter) -> Self {
 
-        let nodes_response = do_get(&format!("http://{}/nodes", nsq_lookup)).expect("Unable to talk to nsq_lookup");
-        let empty_vec: Vec<serde_json::Value> = vec![];
-        let producers = nodes_response["data"]["producers"].as_array().unwrap_or(&empty_vec);
+        let mut runtime = Runtime::new().unwrap();
 
-        for producer in producers {
-            let hostname = producer["hostname"].as_str().unwrap();
-            let port = producer["http_port"].as_u64().unwrap();
-            host_details.entry(s!(hostname)).or_insert_with(|| HostDetails::new(format!("{}:{}", hostname, port)));
-        }
+        let host_details_fut = do_get(&format!("http://{}/nodes", nsq_lookup)).and_then(|nodes_response|{
+            let mut host_details: BTreeMap<String, HostDetails> = BTreeMap::new();
+            let empty_vec: Vec<serde_json::Value> = vec![];
+            let producers = nodes_response["data"]["producers"].as_array().unwrap_or(&empty_vec);
+
+            for producer in producers {
+                let hostname = producer["hostname"].as_str().unwrap();
+                let port = producer["http_port"].as_u64().unwrap();
+                host_details.entry(s!(hostname)).or_insert_with(|| HostDetails::new(format!("{}:{}", hostname, port)));
+            }
+
+            Ok(host_details)
+        });
+
+        let mut host_details = runtime.block_on(host_details_fut).expect("To be able to talk to NSQ");
 
         let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(host_details.len(), "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} Waiting for NSQ nodes to respond"));
+        let pb = Arc::new(pb);
 
-        let futures: Vec<_> = host_details.values_mut().map(|x| x.update_status(&pb)).collect();
-        join_all(futures).await;
+        let mut runtime = Runtime::new().unwrap();
+        let mut futures: Vec<_> = Vec::new();
+        for (_key, value) in host_details.iter() {
+                if let Some(future) = value.create_host_status() {
+                    let pb = pb.clone();
+                    futures.push(future.and_then(move |x| { pb.inc(); Ok(x) }));
+                } else {
+                    pb.inc();
+                }
+        };
 
-        host_details.values_mut().for_each(|x| x.initalize(&filter));
+        let uber_future = future::join_all(futures);
+        let statuses = runtime.block_on(uber_future).expect("API to be somewhat stable");
+
+        host_details.values_mut().for_each(|x| {
+            if let Some(status) = statuses.iter().find(|status| status.hostname == x.hostname) {
+                x.initalize(&status, &filter)
+            } else {
+                x.disable_host = true
+            }
+        });
 
         pb.done();
 
@@ -99,25 +133,33 @@ impl NsqState {
         }
     }
 
-    pub async fn update_status(&self) -> NsqSnapshot {
+    pub fn update_status<'a>(&self) -> NsqSnapshot {
 
         let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(self.host_details.len(), "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} Fetching status from NSQ Hosts"));
+        let pb = Arc::new(pb);
 
-        let mut futures = Vec::new();
-        for value in self.host_details.values() {
-            futures.push(value.update_status(&pb));
-        }
+        let mut runtime = Runtime::new().unwrap();
+        let mut futures: Vec<_> = Vec::new();
+        for (_key, value) in self.host_details.iter() {
+                if let Some(future) = value.create_host_status() {
+                    let pb = pb.clone();
+                    futures.push(future.and_then(move |x| { pb.inc(); Ok(x) }));
+                } else {
+                    pb.inc();
+                }
+        };
+        
+        let uber_future = future::join_all(futures);
+        let statuses = runtime.block_on(uber_future).expect("API to be somewhat stable");
 
-        join_all(futures).await;
-
-        self.get_status()
+        self.make_snapshot(statuses)
     }
 
-    pub fn get_status(&self) -> NsqSnapshot {
+    pub fn make_snapshot(&self, host_status_vec: Vec<HostStatus>) -> NsqSnapshot {
         let mut snapshot = NsqSnapshot { pull_finished: Local::now(), topics: BTreeMap::new(), producers: BTreeMap::new() };
 
-        for details in self.host_details.values().filter(|x| x.disable_host == false) {
-            for topic_status in details.status.read().unwrap().iter() {
+        for details in host_status_vec {
+            for topic_status in details.status.iter() {
                 let topic_name = topic_status.topic_name.clone();
                 let producer_hostname = details.hostname.clone();
 
@@ -144,7 +186,7 @@ impl NsqState {
 
     pub fn get_topic_url(&self, topic_name: &str) -> Option<String> {
         self.host_details.values()
-            .find(|host| host.status.read().unwrap().iter().any(|x| x.topic_name == topic_name))
+            .find(|host| host.topics.iter().any(|x| x == topic_name))
             .map(|x| format!("http://{}", x.hostname))
     }
 }
@@ -232,18 +274,18 @@ impl HostDetails {
     fn new(hostname: String) -> Self {
         HostDetails {
             hostname: hostname,
-            status: RwLock::new(Vec::new()),
-            disable_host: false
+            disable_host: false,
+            topics: BTreeSet::new()
         }
     }
 
-    fn initalize<'a>(&'a mut self, filter: &'a NsqFilter) {
-        let consumer_hostnames: BTreeSet<String> = self.status.read().unwrap().iter()
+    fn initalize<'a>(&'a mut self, host_status: &HostStatus, filter: &'a NsqFilter) {
+        let consumer_hostnames: BTreeSet<String> = host_status.status.iter()
             .flat_map(|status| status.channels.iter())
             .flat_map(|channel| channel.consumers.iter().map(|consumer| consumer.hostname.clone()))
             .collect();
 
-        let topic_names: BTreeSet<String> = self.status.read().unwrap().iter()
+        let topic_names: BTreeSet<String> = host_status.status.iter()
             .map(|status| status.topic_name.clone())
             .collect();
 
@@ -264,56 +306,56 @@ impl HostDetails {
         }
     }
 
-    async fn update_status<'a>(&'a self, pb: &'a ProgressBarHelper) {
+    fn create_host_status(&self) -> Option<impl Future<Item = HostStatus, Error = ErrorType>> {
         if self.disable_host {
-            pb.inc();
-            return;
+            return None;
         }
 
-        let root = match do_get(&format!("http://{}/stats?format=json", self.hostname)) {
-            Some(root) => root,
-            None => {
-                return;
-            }
-        };
+        let hostname = self.hostname.clone();
 
-        let details = match serde_json::from_value::<StatusTopicsDetails>(root.clone()) {
-            Ok(details) => details,
-            Err(_) => {
-                match serde_json::from_value::<StatusTopicsResponse>(root.clone()) {
-                    Ok(root) => root.data,
-                    Err(err) => {
-                        warn!("Unable to deserialize {} from the stats because {:?}", root, err);
-                        return;
+        Some(do_get(&format!("http://{}/stats?format=json", self.hostname))
+            .map_err(|err| ErrorType::Fatal(format!("{}", err)))
+            .and_then(|root| {
+                match serde_json::from_value::<StatusTopicsDetails>(root.clone()) {
+                    Ok(details) => Ok(Some(details)),
+                    Err(_) => {
+                        match serde_json::from_value::<StatusTopicsResponse>(root.clone()) {
+                            Ok(root) => Ok(Some(root.data)),
+                            Err(err) => {
+                                warn!("Unable to deserialize {} from the stats because {:?}", root, err);
+                                return Ok(None);
+                            }
+                        }
                     }
                 }
-            }
-        };
+            }).and_then(|json_obj| {
+                let mut result: Vec<HostTopicStatus> = Vec::new();
 
-        let mut result: Vec<HostTopicStatus> = Vec::new();
+                let json_obj = match json_obj {
+                    Some(obj) => obj,
+                    None => return Ok(HostStatus { hostname: hostname, status: result })
+                };
 
-        for topic in details.topics {
-            let topic_name = topic.topic_name;
-            let depth = topic.depth;
-            let message_count = topic.message_count;
+                for topic in json_obj.topics {
+                    let topic_name = topic.topic_name;
+                    let depth = topic.depth;
+                    let message_count = topic.message_count;
 
-            let channels: Vec<ChannelStatus> = topic.channels.into_iter().map(|channel| ChannelStatus::new(topic_name.clone(), channel)).collect();
+                    let channels: Vec<ChannelStatus> = topic.channels.into_iter().map(|channel| ChannelStatus::new(topic_name.clone(), channel)).collect();
 
-            let topic_status = HostTopicStatus {
-                topic_name: topic_name.clone(),
-                depth,
-                message_count, 
-                channels
-            };
+                    let topic_status = HostTopicStatus {
+                            topic_name: topic_name.clone(),
+                            depth,
+                            message_count, 
+                            channels
+                        };
 
-            result.push(topic_status);
-        }
+                    result.push(topic_status);
+                }
 
-        let mut locked_status = self.status.write().unwrap();
-        locked_status.clear();
-        locked_status.extend(result);
-
-        pb.inc();
+            
+                Ok(HostStatus { hostname: hostname, status: result })
+            }))
     }
 }
 

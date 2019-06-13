@@ -7,7 +7,6 @@ use std::time::Duration;
 use clap::ArgMatches;
 use crossbeam_channel::bounded;
 use crossbeam_channel::Receiver;
-use futures::executor::block_on;
 
 use crate::commands::nsq::api::*;
 use crate::commands::progress::*;
@@ -108,7 +107,7 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
         )
     };
 
-    let status = block_on(NsqState::new(&options.nsq_lookup, NsqFilter::Topic { topics: vec![options.topic.clone()].into_iter().collect() } ));
+    let status = NsqState::new(&options.nsq_lookup, NsqFilter::Topic { topics: vec![options.topic.clone()].into_iter().collect() } );
 
     debug!("Capacity of in messages: {}", capacity);
     debug!("Interval of new tokens: {:?}", interval);
@@ -222,7 +221,7 @@ fn check_api_status(topic: &str, state: &NsqState) {
 }
 
 fn do_api_check(topic: &str, state: &NsqState) {
-    let snapshot = block_on(state.update_status());
+    let snapshot = state.update_status();
     let agg = snapshot.topics.get(topic).unwrap().producer_aggregate();
     let max_depth = std::cmp::max(0, agg.depth) as usize;
     API_DEPTH.store(max_depth, Ordering::SeqCst);

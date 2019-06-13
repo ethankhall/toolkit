@@ -1,7 +1,6 @@
 #![recursion_limit = "1024"]
 #![feature(slice_concat_ext)]
 #![feature(vec_remove_item)]
-#![feature(async_await)]
 
 extern crate chrono;
 extern crate chrono_tz;

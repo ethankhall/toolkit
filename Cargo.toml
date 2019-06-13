@@ -31,4 +31,4 @@ flate2 = "1.0"
 atty = "0.2"
 pest = "2.1.0"
 pest_derive = "2.1.0"
-futures-preview = { version = "=0.3.0-alpha.16", features = ["async-await", "nightly"] }
+tokio = "0.1"

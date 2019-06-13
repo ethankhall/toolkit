@@ -107,7 +107,12 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
         )
     };
 
-    let status = NsqState::new(&options.nsq_lookup, NsqFilter::Topic { topics: vec![options.topic.clone()].into_iter().collect() } );
+    let status = NsqState::new(
+        &options.nsq_lookup,
+        NsqFilter::Topic {
+            topics: vec![options.topic.clone()].into_iter().collect(),
+        },
+    );
 
     debug!("Capacity of in messages: {}", capacity);
     debug!("Interval of new tokens: {:?}", interval);
@@ -129,7 +134,10 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
 
     let submit_url = format!("{}/pub?topic={}", base_addresss, &options.topic);
 
-    let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(options.limit, "[{elapsed_precise}] {bar:80.cyan/blue} {pos:>7}/{len:7} {msg}"));
+    let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(
+        options.limit,
+        "[{elapsed_precise}] {bar:80.cyan/blue} {pos:>7}/{len:7} {msg}",
+    ));
 
     let (s1, r1) = bounded(20);
 

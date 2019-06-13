@@ -8,8 +8,8 @@ use colored::*;
 use prettytable::{format, Table};
 use termion::screen::*;
 
-use crate::commands::CliError;
 use crate::commands::nsq::api::*;
+use crate::commands::CliError;
 
 struct ConfigOptions {
     nsq_lookup: String,
@@ -21,7 +21,6 @@ struct ConfigOptions {
 
 impl ConfigOptions {
     fn new(matches: &ArgMatches) -> Self {
-
         let nsq_lookup_host = matches.value_of("nsq_lookup_host").unwrap();
         let nsq_lookup_port = matches.value_of("nsq_lookup_port").unwrap();
 
@@ -54,16 +53,17 @@ pub fn do_stats_command(matches: &ArgMatches) -> Result<(), CliError> {
     let config = ConfigOptions::new(matches);
 
     let filter = match (matches.values_of("producers"), matches.values_of("topics")) {
-        (Some(hosts), Some(topics)) => {
-            NsqFilter::ProducerAndTopic { hosts: hosts.map(|x| s!(x)).collect(), topics: topics.map(|x| s!(x)).collect() }
+        (Some(hosts), Some(topics)) => NsqFilter::ProducerAndTopic {
+            hosts: hosts.map(|x| s!(x)).collect(),
+            topics: topics.map(|x| s!(x)).collect(),
         },
-        (None, Some(topics)) => {
-            NsqFilter::Topic { topics: topics.map(|x| s!(x)).collect() }
+        (None, Some(topics)) => NsqFilter::Topic {
+            topics: topics.map(|x| s!(x)).collect(),
         },
-        (Some(hosts), None) => {
-            NsqFilter::Producer { hosts: hosts.map(|x| s!(x)).collect() }
+        (Some(hosts), None) => NsqFilter::Producer {
+            hosts: hosts.map(|x| s!(x)).collect(),
         },
-        _ => unimplemented!()
+        _ => unimplemented!(),
     };
 
     let state = NsqState::new(&config.nsq_lookup, filter);
@@ -89,7 +89,7 @@ fn do_loop(config: &ConfigOptions, state: NsqState) {
 
         buffer_size = std::cmp::max(buffer_size, last_buffer_size);
         write!(screen, "{}", termion::clear::AfterCursor).unwrap();
-        
+
         let poll_start = Local::now();
         snapshot = state.update_status();
 
@@ -122,20 +122,25 @@ fn print_report(
 ) -> usize {
     let mut buffer: Vec<u8> = Vec::new();
 
-    writeln!(buffer, "Polled at {} (UTC: {})", s!(current.pull_finished).bold(), s!(current.pull_finished.with_timezone(&Utc)).bold()).unwrap();
+    writeln!(
+        buffer,
+        "Polled at {} (UTC: {})",
+        s!(current.pull_finished).bold(),
+        s!(current.pull_finished.with_timezone(&Utc)).bold()
+    )
+    .unwrap();
 
     for (topic_name, host_table) in make_host_table(&current, &last_data) {
         writeln!(buffer, "\n📇 {}", topic_name.bold()).unwrap();
-        
+
         if !config_options.hide_hosts {
             host_table.print(&mut buffer).unwrap();
         }
 
-        if let Some(table) = make_channel_table(&config_options, &current, &topic_name, &last_data) {
+        if let Some(table) = make_channel_table(&config_options, &current, &topic_name, &last_data)
+        {
             writeln!(buffer, "").unwrap();
-            table
-                .print(&mut buffer)
-                .unwrap();
+            table.print(&mut buffer).unwrap();
         }
     }
 
@@ -155,7 +160,12 @@ fn print_report(
     lines
 }
 
-fn make_channel_table(config_options: &ConfigOptions, stats: &NsqSnapshot, topic: &str, last: &Option<NsqSnapshot>) -> Option<Table> {
+fn make_channel_table(
+    config_options: &ConfigOptions,
+    stats: &NsqSnapshot,
+    topic: &str,
+    last: &Option<NsqSnapshot>,
+) -> Option<Table> {
     let mut table = Table::new();
 
     table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
@@ -178,9 +188,11 @@ fn make_channel_table(config_options: &ConfigOptions, stats: &NsqSnapshot, topic
         let change = match last {
             Some(last_stats) => match last_stats.get_channel(topic, channel_name) {
                 Some(last_channel_stats) => {
-                    let difference = (channel.depth as u128 - last_channel_stats.depth as u128) as f64;
+                    let difference =
+                        (channel.depth as u128 - last_channel_stats.depth as u128) as f64;
                     let mps = difference
-                        / (stats.pull_finished - last_stats.pull_finished).num_milliseconds() as f64;
+                        / (stats.pull_finished - last_stats.pull_finished).num_milliseconds()
+                            as f64;
                     let mps = mps * 1000 as f64;
 
                     format!("{} ({:.2} m/s)", difference, mps)
@@ -200,7 +212,7 @@ fn make_channel_table(config_options: &ConfigOptions, stats: &NsqSnapshot, topic
     }
 
     if !channel_written {
-        return None
+        return None;
     }
 
     Some(table)
@@ -235,14 +247,11 @@ fn make_host_table(current: &NsqSnapshot, last: &Option<NsqSnapshot>) -> BTreeMa
             if let Some(last_topic_stats) = previous_stats.topics.get(topic_name) {
                 let last_aggregate = last_topic_stats.producer_aggregate();
                 let change = aggregate.message_count as u128 - last_aggregate.message_count as u128;
-                table.add_row(row![
-                    "Change",
-                    "",
-                    change
-                ]);
+                table.add_row(row!["Change", "", change]);
                 let mps = change as f64;
-                let mps =
-                    mps / (current.pull_finished - previous_stats.pull_finished).num_milliseconds() as f64;
+                let mps = mps
+                    / (current.pull_finished - previous_stats.pull_finished).num_milliseconds()
+                        as f64;
                 let mps = mps * 1000 as f64;
                 table.add_row(row!["Rate", "", format!("{:.2} m/s", mps)]);
             }

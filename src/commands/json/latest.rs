@@ -7,9 +7,9 @@ use std::path::PathBuf;
 use clap::ArgMatches;
 use json::JsonValue;
 
-use crate::commands::CliError;
-use crate::commands::progress::*;
 use super::{find_field, parse_path};
+use crate::commands::progress::*;
+use crate::commands::CliError;
 
 #[derive(Debug)]
 struct Record {
@@ -57,7 +57,9 @@ pub fn do_json_latest_command(args: &ArgMatches) -> Result<(), CliError> {
     let file = File::create(output_path).unwrap();
     let mut file = LineWriter::new(file);
 
-    let pb = ProgressBarHelper::new(ProgressBarType::UnsizedProgressBar("{prefix:.bold.dim} {spinner:.green} {wide_msg}"));
+    let pb = ProgressBarHelper::new(ProgressBarType::UnsizedProgressBar(
+        "{prefix:.bold.dim} {spinner:.green} {wide_msg}",
+    ));
 
     let mut records: BTreeMap<String, Record> = BTreeMap::new();
 

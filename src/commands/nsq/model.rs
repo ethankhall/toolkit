@@ -22,7 +22,7 @@ pub struct TopicChannel {
     pub in_flight_count: u64,
     pub channel_name: String,
     pub message_count: u64,
-    pub clients: Vec<ClientDetails>
+    pub clients: Vec<ClientDetails>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -50,7 +50,6 @@ pub struct LookupResponse {
 pub struct LookupData {
     pub producers: Vec<LookupProducer>,
 }
-
 
 #[test]
 fn test_extract_size() {

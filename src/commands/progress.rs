@@ -12,7 +12,9 @@ pub enum ProgressBarType<'a> {
 impl ProgressBarHelper {
     pub fn new(p_type: ProgressBarType) -> Self {
         if atty::isnt(atty::Stream::Stdout) {
-            ProgressBarHelper { pb: ProgressBar::hidden() }
+            ProgressBarHelper {
+                pb: ProgressBar::hidden(),
+            }
         } else {
             let template = match &p_type {
                 ProgressBarType::SizedProgressBar(_, template) => template,

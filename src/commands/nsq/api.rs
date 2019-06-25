@@ -1,40 +1,32 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use chrono::prelude::*;
+use futures::Future;
+use futures_cpupool::CpuPool;
 use tokio::prelude::*;
-use tokio::runtime::Runtime;
 use url::Url;
 
 use super::model::*;
 use crate::commands::progress::*;
 
 lazy_static! {
-    static ref HTTP_CLIENT: reqwest::r#async::Client = reqwest::r#async::Client::builder()
+    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .expect("Should be able to make client");
 }
 
-fn do_get(url: &str) -> impl Future<Item = serde_json::Value, Error = String> {
+fn do_get(url: &str) -> Result<serde_json::Value, String> {
     let url = Url::parse(&url).expect("URL to be valid");
 
     HTTP_CLIENT
         .get(url)
         .send()
         .map_err(|e| s!(format!("{}", e)))
-        .and_then(|resp| {
+        .and_then(|mut resp| {
             let status = resp.status();
-            let text = resp
-                .into_body()
-                .concat2()
-                .wait()
-                .and_then(|c| {
-                    Ok(std::str::from_utf8(&c)
-                        .map(str::to_owned)
-                        .unwrap_or(s!("no body provided")))
-                })
-                .unwrap_or(s!("no body provided"));
+            let text = resp.text().unwrap_or(s!("no body provided"));
             if !status.is_success() {
                 Err(s!(format!("NSQ returned with an error: {:#?}", text)))
             } else {
@@ -71,7 +63,7 @@ pub struct NsqState {
     host_details: BTreeMap<String, HostDetails>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 struct HostDetails {
     hostname: String,
     base_url: String,
@@ -86,10 +78,8 @@ struct HostStatus {
 
 impl NsqState {
     pub fn new(nsq_lookup: &str, filter: NsqFilter) -> Self {
-        let mut runtime = Runtime::new().unwrap();
-
-        let host_details_fut =
-            do_get(&format!("http://{}/nodes", nsq_lookup)).and_then(|nodes_response| {
+        let mut host_details = do_get(&format!("http://{}/nodes", nsq_lookup))
+            .and_then(|nodes_response| {
                 let mut host_details: BTreeMap<String, HostDetails> = BTreeMap::new();
                 let empty_vec: Vec<serde_json::Value> = vec![];
                 let producers = nodes_response["data"]["producers"]
@@ -111,11 +101,8 @@ impl NsqState {
                 }
 
                 Ok(host_details)
-            });
-
-        let mut host_details = runtime
-            .block_on(host_details_fut)
-            .expect("To be able to talk to NSQ");
+            })
+            .unwrap();
 
         let (topics_to_include, producers_to_include) = match filter {
             NsqFilter::Producer { hosts } => (None, Some(hosts)),
@@ -162,25 +149,40 @@ impl NsqState {
         NsqState { host_details }
     }
 
-    pub fn update_status<'a>(&self) -> NsqSnapshot {
-        let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(self.host_details.len(), "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} Fetching status from NSQ Hosts"));
-        let pb = Arc::new(pb);
+    pub fn update_status(&self) -> NsqSnapshot {
+        let mut hosts: BTreeSet<String> = BTreeSet::new();
+        let mut host_details: Vec<_> = Vec::new();
 
-        let mut runtime = Runtime::new().unwrap();
-        let mut futures: Vec<_> = Vec::new();
-        for (_key, value) in self.host_details.iter() {
-            let future = value.create_host_status();
-            let pb = pb.clone();
-            futures.push(future.and_then(move |x| {
-                pb.inc();
-                Ok(x)
-            }));
+        for (host, value) in self.host_details.iter() {
+            hosts.insert(s!(host));
+            host_details.push(value.clone());
         }
 
-        let uber_future = future::join_all(futures);
-        let statuses = runtime
-            .block_on(uber_future)
-            .expect("API to be somewhat stable");
+        let hosts = Arc::new(Mutex::new(hosts));
+        let message = itertools::join(hosts.lock().unwrap().iter(), ", ");
+
+        let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(host_details.len(), "[{elapsed}] {bar:10.cyan/blue} {pos:>3}/{len:3} Fetching status from NSQ Hosts: {wide_msg}"));
+        pb.set_message(&message);
+        let pb = Arc::new(pb);
+
+        let pool = CpuPool::new(4);
+
+        let mut futures: Vec<_> = Vec::new();
+        for value in host_details.into_iter() {
+            let pb = pb.clone();
+            let hosts = hosts.clone();
+            let future = pool.spawn_fn(move || {
+                let host_status = value.create_host_status();
+                hosts.lock().unwrap().remove(&s!(value.hostname));
+                let message = itertools::join(hosts.lock().unwrap().iter(), ", ");
+                pb.inc_with_message(&message);
+                host_status
+            });
+
+            futures.push(future);
+        }
+
+        let statuses = future::join_all(futures).wait().unwrap();
 
         self.make_snapshot(statuses)
     }
@@ -360,7 +362,7 @@ impl HostDetails {
         }
     }
 
-    fn create_host_status(&self) -> impl Future<Item = HostStatus, Error = ErrorType> {
+    fn create_host_status(&self) -> Result<HostStatus, ErrorType> {
         let hostname = self.hostname.clone();
 
         do_get(&format!("http://{}/stats?format=json", self.base_url))

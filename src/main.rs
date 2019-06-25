@@ -30,6 +30,11 @@ extern crate atty;
 extern crate pest;
 #[macro_use]
 extern crate pest_derive;
+extern crate futures;
+extern crate futures_cpupool;
+extern crate itertools;
+
+use std::sync::Mutex;
 
 mod commands;
 
@@ -42,14 +47,23 @@ use commands::nsq::stats::do_stats_command;
 use commands::time::do_time_command;
 use kopy_common_lib::configure_logging;
 
+lazy_static! {
+    static ref DEBUG_LEVEL: Mutex<i32> = Mutex::new(0);
+}
+
 fn main() {
     let yml = load_yaml!("cli.yaml");
     let matches = App::from_yaml(yml)
         .version(&*format!("v{}", crate_version!()))
         .get_matches();
 
+    let debug_level = matches.occurrences_of("debug") as i32;
+    {
+        *DEBUG_LEVEL.lock().unwrap() = debug_level;
+    }
+
     configure_logging(
-        matches.occurrences_of("debug") as i32,
+        debug_level,
         matches.is_present("warn"),
         matches.is_present("quite"),
     );

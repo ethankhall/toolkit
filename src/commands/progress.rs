@@ -11,7 +11,9 @@ pub enum ProgressBarType<'a> {
 
 impl ProgressBarHelper {
     pub fn new(p_type: ProgressBarType) -> Self {
-        if atty::isnt(atty::Stream::Stdout) {
+        let is_debug = { *crate::DEBUG_LEVEL.lock().unwrap() >= 1 };
+
+        if atty::isnt(atty::Stream::Stdout) || is_debug {
             ProgressBarHelper {
                 pb: ProgressBar::hidden(),
             }

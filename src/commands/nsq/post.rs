@@ -132,6 +132,8 @@ pub fn do_send_command(args: &ArgMatches) -> Result<(), CliError> {
         }
     };
 
+    debug!("Using {} as the base url", base_addresss);
+
     let submit_url = format!("{}/pub?topic={}", base_addresss, &options.topic);
 
     let pb = ProgressBarHelper::new(ProgressBarType::SizedProgressBar(

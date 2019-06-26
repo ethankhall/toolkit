@@ -20,6 +20,8 @@ lazy_static! {
 fn do_get(url: &str) -> Result<serde_json::Value, String> {
     let url = Url::parse(&url).expect("URL to be valid");
 
+    debug!("Making HTTP Call to {}", url);
+
     HTTP_CLIENT
         .get(url)
         .send()
@@ -245,7 +247,7 @@ impl NsqState {
         self.host_details
             .values()
             .find(|host| host.topics.iter().any(|x| x == topic_name))
-            .map(|x| format!("http://{}", x.hostname))
+            .map(|x| format!("http://{}", x.base_url))
     }
 }
 

@@ -5,7 +5,7 @@ authors = ["Ethan Hall <ethankhall@pm.me>"]
 edition = "2018"
 
 [dependencies]
-log = "0.4.1"
+log = "0.4.8"
 fern = { version = "0.5", features = ["colored"] }
 clap = { version = "2.32", features = ["yaml"] }
 colored = "1.6"

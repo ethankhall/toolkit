@@ -1,5 +1,3 @@
-use std::slice::SliceConcatExt;
-
 mod parse;
 
 use clap::ArgMatches;

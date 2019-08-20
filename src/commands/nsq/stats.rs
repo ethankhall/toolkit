@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
-use std::io::{stdout, Stdout, Write};
+use std::io::Write;
 use std::{thread, time};
 
 use chrono::prelude::*;
 use clap::ArgMatches;
 use colored::*;
 use prettytable::{format, Table};
-use termion::screen::*;
+use crossterm::{terminal, ClearType, Terminal};
 
 use crate::commands::nsq::api::*;
 use crate::commands::CliError;
@@ -73,7 +73,7 @@ pub fn do_stats_command(matches: &ArgMatches) -> Result<(), CliError> {
 }
 
 fn do_loop(config: &ConfigOptions, state: NsqState) {
-    let mut screen = AlternateScreen::from(stdout());
+    let mut terminal = terminal();
     let mut counter = 0;
     let mut last_data = None;
     let mut buffer_size: i32 = -1;
@@ -81,14 +81,14 @@ fn do_loop(config: &ConfigOptions, state: NsqState) {
 
     loop {
         if buffer_size > 0 {
-            write!(screen, "{}", termion::cursor::Up(buffer_size as u16),).unwrap();
+            terminal.scroll_up(buffer_size as i16).unwrap();
         }
 
-        let last_buffer_size = print_report(&config, &snapshot, last_data, &mut screen) as i32;
+        let last_buffer_size = print_report(&config, &snapshot, last_data, &mut terminal) as i32;
         last_data = Some(snapshot);
 
         buffer_size = std::cmp::max(buffer_size, last_buffer_size);
-        write!(screen, "{}", termion::clear::AfterCursor).unwrap();
+        terminal.clear(ClearType::FromCursorDown).unwrap();
 
         let poll_start = Local::now();
         snapshot = state.update_status();
@@ -118,7 +118,7 @@ fn print_report(
     config_options: &ConfigOptions,
     current: &NsqSnapshot,
     last_data: Option<NsqSnapshot>,
-    screen: &mut AlternateScreen<Stdout>,
+    screen: &mut Terminal,
 ) -> usize {
     let mut buffer: Vec<u8> = Vec::new();
 
@@ -148,13 +148,8 @@ fn print_report(
     let line_buffer = buffer.split(|x| x == &('\n' as u8));
     for line in line_buffer {
         lines += 1;
-        writeln!(
-            screen,
-            "{}{}",
-            String::from_utf8(line.to_vec()).unwrap(),
-            termion::clear::UntilNewline
-        )
-        .unwrap();
+        screen.write(String::from_utf8(line.to_vec()).unwrap()).unwrap();
+        screen.clear(ClearType::UntilNewLine).unwrap();
     }
 
     lines

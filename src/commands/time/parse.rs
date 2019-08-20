@@ -363,7 +363,7 @@ fn assert_contains_date(time_results: &TimeResult, required: &[CalendarDate]) {
             ut,
             dates
         );
-        dates.remove_item(&ut);
+        dates.iter().position(|item| ut == item).map(|i| dates.remove(i));
     }
 
     assert_eq!(0, dates.len());

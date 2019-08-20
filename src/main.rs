@@ -1,7 +1,3 @@
-#![recursion_limit = "1024"]
-#![feature(slice_concat_ext)]
-#![feature(vec_remove_item)]
-
 extern crate chrono;
 extern crate chrono_tz;
 extern crate colored;
@@ -23,7 +19,7 @@ extern crate log;
 extern crate kopy_common_lib;
 #[macro_use]
 extern crate prettytable;
-extern crate termion;
+extern crate crossterm;
 #[macro_use]
 extern crate lazy_static;
 extern crate atty;

@@ -5,8 +5,8 @@ use std::{thread, time};
 use chrono::prelude::*;
 use clap::ArgMatches;
 use colored::*;
-use prettytable::{format, Table};
 use crossterm::{terminal, ClearType, Terminal};
+use prettytable::{format, Table};
 
 use crate::commands::nsq::api::*;
 use crate::commands::CliError;
@@ -127,8 +127,7 @@ fn print_report(
         "Polled at {} (UTC: {})",
         s!(current.pull_finished).bold(),
         s!(current.pull_finished.with_timezone(&Utc)).bold()
-    )
-    .unwrap();
+    ).unwrap();
 
     for (topic_name, host_table) in make_host_table(&current, &last_data) {
         writeln!(buffer, "\n📇 {}", topic_name.bold()).unwrap();
@@ -148,7 +147,9 @@ fn print_report(
     let line_buffer = buffer.split(|x| x == &('\n' as u8));
     for line in line_buffer {
         lines += 1;
-        screen.write(String::from_utf8(line.to_vec()).unwrap()).unwrap();
+        screen
+            .write(String::from_utf8(line.to_vec()).unwrap())
+            .unwrap();
         screen.clear(ClearType::UntilNewLine).unwrap();
     }
 
@@ -244,9 +245,8 @@ fn make_host_table(current: &NsqSnapshot, last: &Option<NsqSnapshot>) -> BTreeMa
                 let change = aggregate.message_count as u128 - last_aggregate.message_count as u128;
                 table.add_row(row!["Change", "", change]);
                 let mps = change as f64;
-                let mps = mps
-                    / (current.pull_finished - previous_stats.pull_finished).num_milliseconds()
-                        as f64;
+                let mps = mps / (current.pull_finished - previous_stats.pull_finished)
+                    .num_milliseconds() as f64;
                 let mps = mps * 1000 as f64;
                 table.add_row(row!["Rate", "", format!("{:.2} m/s", mps)]);
             }

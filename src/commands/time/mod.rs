@@ -46,8 +46,7 @@ fn render_full_output(input: TimeResult) -> Result<(), CliError> {
                 datetime.month(),
                 datetime.day(),
                 datetime.year()
-            )
-            .bold()
+            ).bold()
         );
         println!(
             "  ├── Date in YMD: {}",
@@ -56,8 +55,7 @@ fn render_full_output(input: TimeResult) -> Result<(), CliError> {
                 datetime.year(),
                 datetime.month(),
                 datetime.day()
-            )
-            .bold()
+            ).bold()
         );
         println!(
             "  ├── Day in year: {}",
@@ -69,8 +67,7 @@ fn render_full_output(input: TimeResult) -> Result<(), CliError> {
                 "{}-{}",
                 datetime.iso_week().year(),
                 datetime.iso_week().week()
-            )
-            .bold()
+            ).bold()
         );
         println!(
             "  ├── Day of week: {}",

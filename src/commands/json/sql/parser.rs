@@ -164,7 +164,7 @@ fn validate_ast_builder() {
 
     assert_eq!(
         SqlOperation::Select {
-            columns: vec![s!("*")]
+            columns: vec![s!("*")],
         },
         expression.operation
     );
@@ -172,7 +172,7 @@ fn validate_ast_builder() {
     assert_eq!(
         vec![SqlFilter::Condition(SqlComparison::Equal {
             path: s!(".a.b.c"),
-            value: s!("123")
+            value: s!("123"),
         })],
         expression.filter
     );
